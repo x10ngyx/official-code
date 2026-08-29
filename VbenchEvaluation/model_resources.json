@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "cache_environment_variable": "VBENCH_CACHE_DIR",
+  "default_workspace_path": "models/VBench",
+  "upstream_commit": "fd18b3d055cb0fc6f066ca90fe2c3c8cbb698490",
+  "resources": [
+    {
+      "dimensions": ["background_consistency", "appearance_style"],
+      "target": "clip_model/ViT-B-32.pt",
+      "url": "https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt"
+    },
+    {
+      "dimensions": ["aesthetic_quality"],
+      "target": "clip_model/ViT-L-14.pt",
+      "url": "https://openaipublic.azureedge.net/clip/models/b8cca3fd41ae0c99ba7e8951adf17d267cdb84cd88be6f7c2e0eca1737a03836/ViT-L-14.pt"
+    },
+    {
+      "dimensions": ["aesthetic_quality"],
+      "target": "aesthetic_model/emb_reader/sa_0_4_vit_l_14_linear.pth",
+      "url": "https://raw.githubusercontent.com/LAION-AI/aesthetic-predictor/main/sa_0_4_vit_l_14_linear.pth"
+    },
+    {
+      "dimensions": ["subject_consistency"],
+      "target": "dino_model/dino_vitbase16_pretrain.pth",
+      "url": "https://dl.fbaipublicfiles.com/dino/dino_vitbase16_pretrain/dino_vitbase16_pretrain.pth"
+    },
+    {
+      "dimensions": ["motion_smoothness"],
+      "target": "amt_model/amt-s.pth",
+      "url": "https://huggingface.co/lalala125/AMT/resolve/main/amt-s.pth"
+    },
+    {
+      "dimensions": ["dynamic_degree"],
+      "target": "raft_model/models/raft-things.pth",
+      "url": "https://dl.dropboxusercontent.com/s/4j4z58wuv8o0mfz/models.zip",
+      "note": "The archive is downloaded, extracted, and then removed by VBench."
+    },
+    {
+      "dimensions": ["human_action"],
+      "target": "umt_model/l16_ptk710_ftk710_ftk400_f16_res224.pth",
+      "url": "https://huggingface.co/OpenGVLab/VBench_Used_Models/resolve/main/l16_ptk710_ftk710_ftk400_f16_res224.pth"
+    },
+    {
+      "dimensions": ["imaging_quality"],
+      "target": "pyiqa_model/musiq_spaq_ckpt-358bb6af.pth",
+      "url": "https://github.com/chaofengc/IQA-PyTorch/releases/download/v0.1-weights/musiq_spaq_ckpt-358bb6af.pth"
+    },
+    {
+      "dimensions": ["object_class", "multiple_objects", "color", "spatial_relationship"],
+      "target": "grit_model/grit_b_densecap_objectdet.pth",
+      "url": "https://huggingface.co/OpenGVLab/VBench_Used_Models/resolve/main/grit_b_densecap_objectdet.pth"
+    },
+    {
+      "dimensions": ["scene"],
+      "target": "caption_model/tag2text_swin_14m.pth",
+      "url": "https://huggingface.co/spaces/xinyu1205/recognize-anything/resolve/main/tag2text_swin_14m.pth"
+    },
+    {
+      "dimensions": ["temporal_style", "overall_consistency"],
+      "target": "ViCLIP/ViClip-InternVid-10M-FLT.pth",
+      "url": "https://huggingface.co/OpenGVLab/VBench_Used_Models/resolve/main/ViClip-InternVid-10M-FLT.pth"
+    }
+  ],
+  "weight_free_dimension": "temporal_flickering"
+}

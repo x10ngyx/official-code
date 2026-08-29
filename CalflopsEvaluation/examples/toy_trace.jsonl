@@ -1,0 +1,8 @@
+{"sample_id":"toy_a","step_index":0,"model_stage":"high","decision":"recompute"}
+{"sample_id":"toy_a","step_index":1,"model_stage":"high","decision":"reuse"}
+{"sample_id":"toy_a","step_index":2,"model_stage":"low","decision":"recompute"}
+{"sample_id":"toy_a","step_index":3,"model_stage":"low","decision":"reuse"}
+{"sample_id":"toy_b","step_index":0,"model_stage":"high","decision":"recompute"}
+{"sample_id":"toy_b","step_index":1,"model_stage":"high","decision":"recompute"}
+{"sample_id":"toy_b","step_index":2,"model_stage":"low","decision":"reuse"}
+{"sample_id":"toy_b","step_index":3,"model_stage":"low","decision":"reuse"}

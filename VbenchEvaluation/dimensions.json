@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "https://github.com/Vchitect/VBench",
+    "commit": "fd18b3d055cb0fc6f066ca90fe2c3c8cbb698490",
+    "source_file": "scripts/constant.py",
+    "source_sha256": "c265be4cb51f95257e0b9dfbcb95453d39edca47ee14cb3f7b11e6f20f165e17"
+  },
+  "dimensions": [
+    "subject_consistency",
+    "background_consistency",
+    "temporal_flickering",
+    "motion_smoothness",
+    "dynamic_degree",
+    "aesthetic_quality",
+    "imaging_quality",
+    "object_class",
+    "multiple_objects",
+    "human_action",
+    "color",
+    "spatial_relationship",
+    "scene",
+    "appearance_style",
+    "temporal_style",
+    "overall_consistency"
+  ],
+  "quality_dimensions": [
+    "subject_consistency",
+    "background_consistency",
+    "temporal_flickering",
+    "motion_smoothness",
+    "aesthetic_quality",
+    "imaging_quality",
+    "dynamic_degree"
+  ],
+  "semantic_dimensions": [
+    "object_class",
+    "multiple_objects",
+    "human_action",
+    "color",
+    "spatial_relationship",
+    "scene",
+    "appearance_style",
+    "temporal_style",
+    "overall_consistency"
+  ],
+  "aggregate_weights": {
+    "quality": 4.0,
+    "semantic": 1.0
+  },
+  "normalization": {
+    "subject_consistency": {"min": 0.1462, "max": 1.0, "weight": 1.0},
+    "background_consistency": {"min": 0.2615, "max": 1.0, "weight": 1.0},
+    "temporal_flickering": {"min": 0.6293, "max": 1.0, "weight": 1.0},
+    "motion_smoothness": {"min": 0.706, "max": 0.9975, "weight": 1.0},
+    "dynamic_degree": {"min": 0.0, "max": 1.0, "weight": 0.5},
+    "aesthetic_quality": {"min": 0.0, "max": 1.0, "weight": 1.0},
+    "imaging_quality": {"min": 0.0, "max": 1.0, "weight": 1.0},
+    "object_class": {"min": 0.0, "max": 1.0, "weight": 1.0},
+    "multiple_objects": {"min": 0.0, "max": 1.0, "weight": 1.0},
+    "human_action": {"min": 0.0, "max": 1.0, "weight": 1.0},
+    "color": {"min": 0.0, "max": 1.0, "weight": 1.0},
+    "spatial_relationship": {"min": 0.0, "max": 1.0, "weight": 1.0},
+    "scene": {"min": 0.0, "max": 0.8222, "weight": 1.0},
+    "appearance_style": {"min": 0.0009, "max": 0.2855, "weight": 1.0},
+    "temporal_style": {"min": 0.0, "max": 0.364, "weight": 1.0},
+    "overall_consistency": {"min": 0.0, "max": 0.364, "weight": 1.0}
+  }
+}

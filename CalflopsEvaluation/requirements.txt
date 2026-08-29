@@ -1,0 +1,2 @@
+calflops==0.3.2
+torch>=2.0

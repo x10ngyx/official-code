@@ -1,0 +1,35 @@
+# Python caches and build outputs
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Local environments and editor files
+.env
+.venv/
+venv/
+.DS_Store
+.idea/
+.vscode/
+
+# Model weights and generated experiment artifacts
+weights
+**/experiment_results/*
+!**/experiment_results/README.md
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.bin
+*.npy
+*.npz
+*.mp4
+*.gif
+
+# Internal project state and handoff logs
+PROGRESS.md
+logs/

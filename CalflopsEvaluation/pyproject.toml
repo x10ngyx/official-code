@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cache-calflops-evaluation"
+version = "0.1.0"
+description = "Path-aware Calflops evaluation for cached diffusion inference"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "calflops==0.3.2",
+  "torch>=2.0",
+]
+
+[project.scripts]
+calflops-eval = "calflops_eval.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["calflops_eval*"]

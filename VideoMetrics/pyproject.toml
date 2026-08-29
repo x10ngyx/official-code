@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "video-fidelity-metrics"
+version = "1.0.0"
+description = "Reproducible full-reference PSNR, SSIM, and LPIPS evaluation for videos"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "imageio>=2.31",
+  "imageio-ffmpeg>=0.4.9",
+  "lpips==0.1.4",
+  "numpy>=1.24",
+  "opencv-python>=4.8",
+  "torch>=2.0",
+  "torchvision>=0.15",
+]
+
+[project.scripts]
+video-metrics = "video_metrics.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["video_metrics*"]

@@ -1,0 +1,27 @@
+{
+  "upstream": {
+    "name": "TeaCache",
+    "repository": "https://github.com/ali-vilab/TeaCache",
+    "commit": "7c10efc4702c6b619f47805f7abe4a7a08085aa0",
+    "license": "Apache-2.0"
+  },
+  "source_files": {
+    "eval/teacache/common_metrics/calculate_psnr.py": "8345bc5128a61ad95d2e68c0cb3078419f5eabf2770447d80bda1a7d32bf7c1a",
+    "eval/teacache/common_metrics/calculate_ssim.py": "e3ce3c79e48a82b19d11addcd9234179efecc8886251e044015ae9e1df2c9b68",
+    "eval/teacache/common_metrics/calculate_lpips.py": "cd9ae70b8bb904b457e7529dbb2bd64257d66cbf9f6c4fd2d34b78457c237761",
+    "eval/teacache/common_metrics/eval.py": "d5bfd89d16afa19d0287c172adde69d76b5605dd23e391813e6c3a330bc079b8"
+  },
+  "protocol_id": "rgb_full_reference_v1",
+  "compatibility": {
+    "rgb_decode": "imageio ffmpeg RGB8, divided by 255 as float32",
+    "psnr": "TeaCache RGB all-channel per-frame MSE; values with MSE < 1e-10 are capped at 100 dB",
+    "ssim": "TeaCache RGB channel mean; 11x11 Gaussian window, sigma=1.5, valid crop, K1=0.01, K2=0.03",
+    "lpips": "TeaCache LPIPS AlexNet spatial map mean; package 0.1.4 and model version 0.1 are explicit",
+    "aggregation": "frame mean per video, then equal-weight mean across videos"
+  },
+  "intentional_fixes": [
+    "Do not average equal-weight batch means; the final short batch therefore cannot be overweighted.",
+    "Reject frame-count or spatial-shape mismatches instead of resizing, cropping, or truncating.",
+    "Sort and validate input pairs deterministically and save per-frame and per-video records."
+  ]
+}

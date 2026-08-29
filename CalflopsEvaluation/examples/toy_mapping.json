@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "sample_field": "sample_id",
+  "step_field": "step_index",
+  "stage_field": "model_stage",
+  "action_field": "decision",
+  "baseline_action": "baseline",
+  "action_aliases": {
+    "refresh": "recompute"
+  },
+  "action_components": {
+    "baseline": {
+      "high": ["high_full", "attention_core", "high_full", "attention_core"],
+      "low": ["low_full", "attention_core", "low_full", "attention_core"]
+    },
+    "recompute": {
+      "high": ["controller", "high_full", "attention_core", "high_full", "attention_core"],
+      "low": ["controller", "low_full", "attention_core", "low_full", "attention_core"]
+    },
+    "reuse": {
+      "$default": ["controller", "reuse_path"]
+    }
+  }
+}

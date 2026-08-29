@@ -1,0 +1,21 @@
+{
+  "package": "calflops",
+  "pypi_version": "0.3.2",
+  "pypi_url": "https://pypi.org/project/calflops/",
+  "repository": "https://github.com/MrYxJ/calculate-flops.pytorch",
+  "repository_commit": "027e89a24daf23ee7ed79ca4abee3fb59b5b23cd",
+  "repository_commit_date": "2024-06-08T00:29:29+08:00",
+  "license": "MIT",
+  "inspected_at": "2026-08-29T14:24:00+08:00",
+  "counting_convention": {
+    "scope": "forward-only",
+    "mac_to_flop": 2,
+    "tflop_divisor": 1000000000000,
+    "note": "The upstream formatter spells operation counts as TFLOPS; this project stores them as TFLOPs per call/video, not TFLOP/s."
+  },
+  "known_wan22_gaps": [
+    "flash_attn kernels are not automatically counted",
+    "torch.nn.functional.scaled_dot_product_attention is not wrapped",
+    "FFT and custom CUDA/Python cache paths require coverage audit or manual components"
+  ]
+}

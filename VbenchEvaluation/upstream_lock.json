@@ -1,0 +1,14 @@
+{
+  "name": "VBench",
+  "repository": "https://github.com/Vchitect/VBench",
+  "commit": "fd18b3d055cb0fc6f066ca90fe2c3c8cbb698490",
+  "package_version": "0.1.5",
+  "license": "Apache-2.0",
+  "files": {
+    "vbench/VBench_full_info.json": "5dd2de80ee43cda750b2b72ea7023657c0b90d3702041c7e4608c65dbe50dccd",
+    "scripts/constant.py": "c265be4cb51f95257e0b9dfbcb95453d39edca47ee14cb3f7b11e6f20f165e17",
+    "evaluate.py": "ba202dcfc15237e5b556a41efdf2cf3aaa13f94f6e62c6d9308d59f2e6649ff6",
+    "requirements.txt": "ee8d54a4c701cdc82e92c1e59b24bbf1a4e1a233bfe06ee8cd4bf68dd4d95d7f",
+    "LICENSE": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+  }
+}
