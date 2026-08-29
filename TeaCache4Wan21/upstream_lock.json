@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "method": {
+    "name": "TeaCache4Wan2.1",
+    "repository": "https://github.com/ali-vilab/TeaCache",
+    "commit": "7c10efc4702c6b619f47805f7abe4a7a08085aa0",
+    "source_path": "TeaCache4Wan2.1/teacache_generate.py",
+    "source_blob": "bafbf3a961836b1f896e62e111ed98c9faa220ec",
+    "sha256": "97af76136337869152f3d6fe9e049cadc2c480740c492749fcd5efa80d9bf7ee",
+    "vendored_path": "upstream/teacache_generate.py",
+    "license": "Apache-2.0"
+  },
+  "wan21": {
+    "repository": "https://github.com/Wan-Video/Wan2.1",
+    "commit": "65386b2e03c490796eede31b0325a6a595cc684e",
+    "license": "Apache-2.0",
+    "license_file": "LICENSE.upstream.txt",
+    "license_file_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "compatibility_files": {
+      "generate.py": "f4aae5a3edafa9522ccbbc19d200928035f0a594d125b8a113c04f031eeeeeb0",
+      "wan/modules/model.py": "06f4b785b3b62b0b115ec01aba5580b1f116a6bb3e3c2cd8b3e160f3b0df09a0",
+      "wan/text2video.py": "ca344c0f24d3d305dd93a0433dc88a212e5d815bb8a784f8f54fc9fa98ff06c1",
+      "wan/image2video.py": "724fcb9f886425ae8741e7177d0df5efe91227c1e5fc78303c47dbceff2c13f6",
+      "requirements.txt": "b50988f3b7627c11456d7ecaf7274f6ad8b7c25ce0dd493f6304462b4b34cc1c"
+    }
+  },
+  "evaluation_boundary": {
+    "paired_metrics": "../VideoMetrics/run_evaluation.sh",
+    "vbench": "../VbenchEvaluation/run_vbench200.sh",
+    "official_teacache_evaluation_used": false
+  },
+  "integration": {
+    "entrypoint": "generate.py",
+    "installer": "teacache.py",
+    "baseline": "Load and execute the locked original Wan2.1 generate.py without importing or applying TeaCache",
+    "teacache": "Explicit --enable_teacache lazily imports and binds the byte-locked official t2v_generate, i2v_generate, and teacache_forward functions"
+  }
+}
