@@ -46,7 +46,7 @@ DiT forward-only，不包含 T5、VAE、scheduler、导出和很小的 TeaCache 
 
 ```bash
 /path/to/wan-env/bin/python -m pip install -e \
-  /home/star/xiongyuxiang/tmp/work/TeaCache/CalflopsEvaluation
+  /home/star/xiongyuxiang/tmp/work/official-code/CalflopsEvaluation
 ```
 
 运行：

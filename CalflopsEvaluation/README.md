@@ -22,7 +22,7 @@ Wan2.2 使用项目既有的 `wan2.2` 环境：
 
 ```bash
 conda activate wan2.2
-python -m pip install -e work/offical-code/CalflopsEvaluation
+python -m pip install -e work/official-code/CalflopsEvaluation
 ```
 
 依赖锁定 `calflops==0.3.2`。模型权重继续使用根目录 `models/`，本项目不复制权重。

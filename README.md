@@ -1,8 +1,8 @@
 # Official Code
 
 Evaluation resources and reproducible utilities for diffusion model caching
-research. The local workspace directory retains the historical
-spelling `offical-code`, while the public repository is named `official-code`.
+research. The local workspace directory and public repository are both named
+`official-code`.
 
 ## 目录结构
 
