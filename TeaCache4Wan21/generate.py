@@ -16,6 +16,9 @@ from types import ModuleType
 EXPECTED_WAN21_GENERATE_SHA256 = (
     "f4aae5a3edafa9522ccbbc19d200928035f0a594d125b8a113c04f031eeeeeb0"
 )
+REPOSITORY_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
+from fixed_protocol import validate_wan21_t2v_1_3b_args  # noqa: E402
 
 
 def sha256(path: Path) -> str:
@@ -84,6 +87,7 @@ def main() -> None:
         args = original._parse_args()
     finally:
         sys.argv = saved_argv
+    validate_wan21_t2v_1_3b_args(args)
 
     if not wrapper_args.enable_teacache and wrapper_args.timing_json is None:
         original.generate(args)

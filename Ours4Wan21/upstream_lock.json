@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "wan21": {
+    "repository": "https://github.com/Wan-Video/Wan2.1",
+    "commit": "65386b2e03c490796eede31b0325a6a595cc684e",
+    "license": "Apache-2.0",
+    "compatibility_files": {
+      "generate.py": "f4aae5a3edafa9522ccbbc19d200928035f0a594d125b8a113c04f031eeeeeb0",
+      "wan/modules/model.py": "06f4b785b3b62b0b115ec01aba5580b1f116a6bb3e3c2cd8b3e160f3b0df09a0",
+      "wan/text2video.py": "ca344c0f24d3d305dd93a0433dc88a212e5d815bb8a784f8f54fc9fa98ff06c1",
+      "requirements.txt": "b50988f3b7627c11456d7ecaf7274f6ad8b7c25ce0dd493f6304462b4b34cc1c"
+    }
+  },
+  "prompt_pool": {
+    "path": "data_collection/resources/prompts/openvidhd_balanced_5000.upstream.jsonl",
+    "rows": 5000,
+    "sha256": "fb5d5d73f86b84d10d8e55154b789ac8549c74e90f33c1d4d2a02d67a5cde3e5",
+    "selection_seed": 2026073001,
+    "selected_rows": 3000,
+    "established_selection_sha256": "261d0423cfb3444485403a505df1491c3c0db06b368d9dceb06fa2af44d22b16",
+    "selected_id_list_sha256": "4316be6b8be97af36221bb521e674814d6385a13e5d7936b4cc4769c772e4805"
+  },
+  "method_reference": {
+    "path": "../SeaCache4Wan21",
+    "behavior": "shared CFG gate, branch-specific Transformer residuals, SEA-filtered gate input",
+    "forced_recompute_steps": [0, 49],
+    "excluded_methods": ["block cache", "CFG cache", "ZEUS", "TeaCache", "learned policy"]
+  },
+  "metrics": {
+    "psnr_protocol": "rgb_full_reference_v1",
+    "selected_metrics": ["psnr", "ssim", "lpips"],
+    "metric_names": ["psnr_rgb_db", "ssim_rgb", "lpips_alex_v0_1_spatial"],
+    "lpips_version": "0.1.4",
+    "calflops_version": "0.3.2"
+  }
+}

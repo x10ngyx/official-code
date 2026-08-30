@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "name": "teacache4wan22_threshold_scan_vbench16_coverage",
+  "purpose": "Locate TeaCache thresholds nearest 1.8x, 2.4x, and 3.0x inference speedup.",
+  "prompt_selection": {
+    "source": "../../../Vbench200/prompts.jsonl",
+    "source_sha256": "053087939c0f09755e8586a22680eb42f29cc79a3916c937944db4653f7fdc51",
+    "method": "Eleven deterministic Vbench200 IDs: eight approximately evenly spaced anchors plus the minimal three records required to cover all 16 VBench dimensions.",
+    "sample_ids": [
+      "vbench200_001",
+      "vbench200_026",
+      "vbench200_051",
+      "vbench200_056",
+      "vbench200_076",
+      "vbench200_085",
+      "vbench200_101",
+      "vbench200_126",
+      "vbench200_151",
+      "vbench200_176",
+      "vbench200_177"
+    ]
+  },
+  "thresholds": [
+    0.15,
+    0.175,
+    0.2,
+    0.225,
+    0.25,
+    0.275,
+    0.3,
+    0.325,
+    0.35,
+    0.375,
+    0.4,
+    0.45,
+    0.5,
+    0.6,
+    0.7,
+    0.8
+  ],
+  "target_speedups": [1.8, 2.4, 3.0],
+  "protocol": {
+    "path": "../../configs/wan22_t2v_a14b_50step_dpmpp.json",
+    "sha256": "9898f731e21aa3ac1bf7b0b6b1c0a3978354f1d1b5bd1ab8ef4569e453bc46b0",
+    "seed": 42
+  },
+  "coefficients": {
+    "path": "../../coefficients/wan22_t2v_a14b_50step_dpmpp_nonretention.json",
+    "sha256": "8b9550f7bd190aafcfac7871bb12d387fbfb4f6afe61e285d08a5b641b0c2970"
+  },
+  "latency": {
+    "headline_field": "pipeline_generate_wall_seconds",
+    "aggregation": "ratio of sums over the same eleven prompts"
+  },
+  "flops": {
+    "metric": "estimated DiT TFLOPs",
+    "profile": "Calflops 0.3.2 full/always-on plus dense FlashAttention correction",
+    "aggregation": "actual 100-call full/reuse trace"
+  },
+  "quality": {
+    "protocol": "rgb_full_reference_v1",
+    "metrics": ["psnr_rgb_db", "ssim_rgb", "lpips_alex_v0_1_spatial", "vbench_score"],
+    "vbench_score": "Vbench200 16-dimension subset total_score over the same 11 prompts"
+  },
+  "execution": {
+    "recommended_workers": 2,
+    "assignment": "round-robin prompts; every baseline and threshold for a prompt stays on one physical GPU",
+    "warmup": "one unreported full-compute generation per worker before measured runs",
+    "model_lifetime": "Each worker constructs one persistent WanT2V pipeline and reuses it for its warm-up and assigned measured runs.",
+    "host_memory_constraint": "Use two concurrent persistent A14B workers on this 251 GiB no-swap host. Three concurrent model conversions reduced available memory to 54 GiB before generation and were stopped at zero measured samples."
+  }
+}

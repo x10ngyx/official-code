@@ -155,6 +155,7 @@ def evaluate_pairs(
     device: str = "auto",
     lpips_batch_size: int = 8,
     expected_frames: int | None = None,
+    lpips_computer: LPIPSComputer | None = None,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
     if not pairs:
         raise ValueError("at least one video pair is required")
@@ -167,11 +168,10 @@ def evaluate_pairs(
     if expected_frames is not None and expected_frames < 1:
         raise ValueError("expected_frames must be at least 1")
 
-    lpips_computer = (
-        LPIPSComputer(device=device, batch_size=lpips_batch_size)
-        if "lpips" in selected_metrics
-        else None
-    )
+    if lpips_computer is not None and "lpips" not in selected_metrics:
+        raise ValueError("lpips_computer was supplied but LPIPS is not selected")
+    if "lpips" in selected_metrics and lpips_computer is None:
+        lpips_computer = LPIPSComputer(device=device, batch_size=lpips_batch_size)
     frame_rows: list[dict[str, object]] = []
     video_rows: list[dict[str, object]] = []
     began = time.monotonic()

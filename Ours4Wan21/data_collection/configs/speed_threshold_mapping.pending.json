@@ -1,0 +1,25 @@
+{
+  "schema": "ours4wan21_speed_threshold_mapping_v1",
+  "calibration_status": "pending",
+  "model": "Wan2.1-T2V-1.3B",
+  "protocol": {
+    "task": "t2v-1.3B",
+    "size_wh": [832, 480],
+    "frame_num": 81,
+    "fps": 16,
+    "sample_steps": 50,
+    "sample_solver": "unipc",
+    "sample_shift": 5.0,
+    "cfg": 5.0,
+    "seed": 42,
+    "parameter_dtype": "bfloat16",
+    "offload_model": false,
+    "t5_cpu": false
+  },
+  "target_speedup_domain": [1.5, 3.5],
+  "fit_source": null,
+  "fit_source_sha256": null,
+  "threshold_bounds": null,
+  "mapping": null,
+  "notes": "Intentionally blank until a matched Wan2.1 calibration experiment is fitted. Candidate manifest materialization must reject this file."
+}

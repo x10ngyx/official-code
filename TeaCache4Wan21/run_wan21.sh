@@ -34,4 +34,8 @@ fi
 cd "$wan21_root"
 export PYTHONPATH="$wan21_root${PYTHONPATH:+:$PYTHONPATH}"
 export WAN21_ROOT="$wan21_root"
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
 exec "$python_bin" "$project_dir/generate.py" "$@"

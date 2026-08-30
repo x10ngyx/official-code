@@ -13,10 +13,15 @@ expected_seeds=${4:-1}
 expected_frames=${5:-81}
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repository_dir=$(cd "$script_dir/../../.." && pwd)
-exp_root=/mnt/hdd/xiongyuxiang/tmp/exp
+exp_root=/all/yiran07-disk3/huteng_data/exp
 video_metrics_env=${VIDEO_METRICS_CONDA_ENV-wan2.2}
 vbench_env=${VBENCH_CONDA_ENV-vbench-eval}
 metrics_device=${METRICS_DEVICE:-cuda:0}
+
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
 
 case "$output_dir/" in
   "$exp_root"/*) ;;

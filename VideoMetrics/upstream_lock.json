@@ -12,6 +12,12 @@
     "eval/teacache/common_metrics/eval.py": "d5bfd89d16afa19d0287c172adde69d76b5605dd23e391813e6c3a330bc079b8"
   },
   "protocol_id": "rgb_full_reference_v1",
+  "model_weights": {
+    "alexnet": {
+      "relative_to_torch_home": "hub/checkpoints/alexnet-owt-7be5be79.pth",
+      "sha256": "7be5be791159472b1fbf3c69796f7cb30dca7ad8466c2df70058c37116cdee02"
+    }
+  },
   "compatibility": {
     "rgb_decode": "imageio ffmpeg RGB8, divided by 255 as float32",
     "psnr": "TeaCache RGB all-channel per-frame MSE; values with MSE < 1e-10 are capped at 100 dB",

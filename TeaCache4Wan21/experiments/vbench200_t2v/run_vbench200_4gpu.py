@@ -11,6 +11,7 @@ import math
 import os
 import shlex
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -18,16 +19,18 @@ from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR.parents[1]
-EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
-DEFAULT_PYTHON = Path(
-    "/mnt/hdd/xiongyuxiang/tmp/data/environments/Wan2.2-conda-env/bin/python"
-)
-DEFAULT_WAN21_ROOT = Path(
-    "/mnt/hdd/xiongyuxiang/tmp/data/source/Wan2.1-65386b2"
-)
-DEFAULT_CHECKPOINT = Path("/mnt/hdd/xiongyuxiang/tmp/models/Wan2.1-T2V-1.3B")
-DEFAULT_VBENCH_CACHE = Path("/mnt/hdd/xiongyuxiang/tmp/models/VBench")
-DEFAULT_VIDEO_METRICS_CACHE = Path("/mnt/hdd/xiongyuxiang/tmp/models/torch-cache")
+WORKSPACE_ROOT = PROJECT_DIR.parents[2]
+EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
+DEFAULT_PYTHON = Path(sys.executable)
+DEFAULT_CHECKPOINT = WORKSPACE_ROOT / "models" / "Wan2.1-T2V-1.3B"
+DEFAULT_VBENCH_CACHE = WORKSPACE_ROOT / "models" / "VBench"
+DEFAULT_VIDEO_METRICS_CACHE = WORKSPACE_ROOT / "models" / "torch-cache"
+THREAD_ENV = {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+}
 
 
 def sha256(path: Path) -> str:
@@ -58,6 +61,7 @@ def check_python(path: Path, modules: list[str], label: str) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env={**os.environ, **THREAD_ENV},
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -168,6 +172,7 @@ def run_generation_condition(
         handle.write(f"command: {shlex.join(command)}\n")
         handle.flush()
         env = os.environ.copy()
+        env.update(THREAD_ENV)
         env["CUDA_VISIBLE_DEVICES"] = gpu_id
         process = subprocess.Popen(
             command,
@@ -213,6 +218,7 @@ def run_logged(
         print(prefix + shlex.join(command))
         return
     env = os.environ.copy()
+    env.update(THREAD_ENV)
     if gpu_id is not None:
         env["CUDA_VISIBLE_DEVICES"] = gpu_id
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -250,6 +256,8 @@ def run_performance(args: argparse.Namespace, status: dict[str, Any]) -> None:
             "--frame-num",
             "81",
         ]
+        if args.calflops_source is not None:
+            command.extend(("--calflops-source", str(args.calflops_source)))
         run_logged(
             command,
             gpu_id=args.gpu_ids[0],
@@ -407,8 +415,9 @@ def parse_args() -> argparse.Namespace:
         "--video-metrics-cache-dir", type=Path, default=DEFAULT_VIDEO_METRICS_CACHE
     )
     parser.add_argument("--vbench-cache-dir", type=Path, default=DEFAULT_VBENCH_CACHE)
-    parser.add_argument("--wan21-root", type=Path, default=DEFAULT_WAN21_ROOT)
+    parser.add_argument("--wan21-root", type=Path, required=True)
     parser.add_argument("--checkpoint-dir", type=Path, default=DEFAULT_CHECKPOINT)
+    parser.add_argument("--calflops-source", type=Path)
     parser.add_argument("--skip-evaluation", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -433,14 +442,14 @@ def main() -> None:
     args.vbench_cache_dir = args.vbench_cache_dir.expanduser().resolve(strict=True)
     args.wan21_root = args.wan21_root.expanduser().resolve(strict=True)
     args.checkpoint_dir = args.checkpoint_dir.expanduser().resolve(strict=True)
+    if args.calflops_source is not None:
+        args.calflops_source = args.calflops_source.expanduser().resolve(strict=True)
     if "1.3B" not in str(args.checkpoint_dir):
         raise ValueError("the locked benchmark requires Wan2.1-T2V-1.3B")
     if not args.dry_run:
-        check_python(
-            args.generation_python,
-            ["torch", "calflops", "calflops_eval"],
-            "generation/Calflops",
-        )
+        check_python(args.generation_python, ["torch"], "generation")
+        if args.calflops_source is None:
+            check_python(args.generation_python, ["calflops"], "Calflops")
         if not args.skip_evaluation:
             check_python(
                 args.video_metrics_python,
@@ -469,7 +478,7 @@ def main() -> None:
                 "seed": 42,
             },
             "precision": "DiT bfloat16",
-            "memory": {"model_cpu_offload": True, "t5_cpu_offload": True},
+            "memory": {"model_cpu_offload": False, "t5_cpu_offload": False},
         },
         "paths": {
             "wan21_root": str(args.wan21_root),
@@ -480,6 +489,9 @@ def main() -> None:
             "video_metrics_cache_dir": str(args.video_metrics_cache_dir),
             "vbench_cache_dir": str(args.vbench_cache_dir),
             "output_dir": str(args.output_dir),
+            "calflops_source": (
+                str(args.calflops_source) if args.calflops_source else None
+            ),
         },
         "scripts": {
             path.name: sha256(path)

@@ -46,7 +46,56 @@ all-within-stage fit is retained as a diagnostic.
 - `watch_and_fit.py`: waits for 70 validated prompt JSON files, stops on any
   recorded failure, and invokes the fitter once the set is complete.
 - `fit_polynomials.py`: validates all 70 samples and fits high/low quartics.
+- `audit_fit.py`: independently recomputes the fit, checks data grain and
+  source equivalence, and reports leave-one-prompt/category-out diagnostics.
 
 All NumPy/BLAS processes are explicitly constrained to one CPU thread. Large
 results must live outside the repository; the project may keep a local symlink
 in `experiment_results/`.
+
+## Reproduce
+
+First prepare the pinned Wan2.2 source with the repository-level
+`scripts/prepare_wan22.sh`, install the official dependencies, and make the
+official T2V-A14B checkpoint available. Then run:
+
+```bash
+export WAN22_SOURCE=/path/to/prepared-Wan2.2
+export WAN22_CKPT=/path/to/Wan2.2-T2V-A14B
+export WAN22_PYTHON=/path/to/wan2.2/bin/python
+export RESULT_ROOT=/path/outside/the/repository/teacache4wan22_fit
+
+"$WAN22_PYTHON" prepare_prompts.py --output-dir "$RESULT_ROOT"
+bash launch_shards.sh "$RESULT_ROOT" teacache4wan22_fit
+
+env OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  NUMEXPR_NUM_THREADS=1 "$WAN22_PYTHON" watch_and_fit.py \
+  --result-root "$RESULT_ROOT" \
+  --manifest "$RESULT_ROOT/prompts.jsonl"
+```
+
+`launch_shards.sh` is intentionally fixed to GPUs 0--3. The watcher may run in
+the foreground or in a separately named tmux session. Completed workers are
+resumable: rerunning the launcher skips sample JSON files that already pass
+the worker's completeness check.
+
+Finally package the validated raw fit from the TeaCache4Wan22 project root:
+
+```bash
+env OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  NUMEXPR_NUM_THREADS=1 "$WAN22_PYTHON" \
+  experiments/fit_t2vcompbench70_wan22_t2v_a14b/audit_fit.py \
+  --result-root "$RESULT_ROOT"
+
+"$WAN22_PYTHON" scripts/package_coefficients.py \
+  --result-root "$RESULT_ROOT" \
+  --output coefficients/wan22_t2v_a14b_50step_dpmpp_nonretention.json
+```
+
+The packager accepts calibration traces only from the locked upstream tree or
+the exact tree produced by `prepare_wan22.sh`. For a legacy result collected
+from another full-compute source, it deliberately stops unless one prompt has
+been rerun on an approved source and all 100 scalar records pass
+`scripts/validate_calibration_source_equivalence.py`. This exception is
+recorded, hashed, and embedded in the packaged coefficient provenance; it is
+not a way to bypass source validation silently.

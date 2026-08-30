@@ -14,15 +14,28 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR.parents[1]
+WORKSPACE_ROOT = PROJECT_DIR.parents[2]
 GENERATOR = PROJECT_DIR / "experiments" / "vbench200_t2v" / "generate_vbench200.py"
-EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
-DEFAULT_WAN21_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/data/source/Wan2.1-65386b2")
-DEFAULT_CHECKPOINT = Path("/mnt/hdd/xiongyuxiang/tmp/models/Wan2.1-T2V-1.3B")
+EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
+DEFAULT_CHECKPOINT = WORKSPACE_ROOT / "models" / "Wan2.1-T2V-1.3B"
+THREAD_ENV = {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+}
 DEFAULT_SAMPLE_IDS = [
     "vbench200_001",
-    "vbench200_016",
-    "vbench200_034",
+    "vbench200_026",
+    "vbench200_051",
     "vbench200_056",
+    "vbench200_076",
+    "vbench200_085",
+    "vbench200_101",
+    "vbench200_126",
+    "vbench200_151",
+    "vbench200_176",
+    "vbench200_177",
 ]
 
 
@@ -33,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-ids", nargs="+", default=DEFAULT_SAMPLE_IDS)
     parser.add_argument("--gpus", nargs="+", default=["0", "1", "2", "3"])
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--wan21-root", type=Path, default=DEFAULT_WAN21_ROOT)
+    parser.add_argument("--wan21-root", type=Path, required=True)
     parser.add_argument("--ckpt-dir", type=Path, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--resume", action="store_true")
@@ -51,6 +64,15 @@ def require_external(path: Path) -> Path:
 
 def threshold_label(threshold: float) -> str:
     return f"threshold_{threshold:.4f}".replace(".", "p")
+
+
+def build_gpu_mapping(sample_ids: list[str], gpus: list[str]) -> dict[str, str]:
+    if not gpus:
+        raise ValueError("GPU IDs must be non-empty")
+    return {
+        sample_id: gpus[index % len(gpus)]
+        for index, sample_id in enumerate(sample_ids)
+    }
 
 
 def write_once_or_match(path: Path, payload: dict[str, object]) -> None:
@@ -125,6 +147,7 @@ def run_condition(
         if args.resume:
             command.append("--resume")
         env = os.environ.copy()
+        env.update(THREAD_ENV)
         env["CUDA_VISIBLE_DEVICES"] = args.gpus[shard_index]
         log_path = condition_dir / f"controller.shard_{shard_index:03d}.{timestamp}.log"
         log_handle = log_path.open("x", encoding="utf-8")
@@ -151,8 +174,10 @@ def run_condition(
 def main() -> None:
     args = parse_args()
     args.output_root = require_external(args.output_root)
-    if len(args.sample_ids) > len(args.gpus):
-        raise ValueError("this calibration requires at least one GPU per selected prompt")
+    if args.seed != 42:
+        raise ValueError("the fixed Wan2.1 protocol requires seed 42")
+    if not args.gpus or len(set(args.gpus)) != len(args.gpus):
+        raise ValueError("GPU IDs must be non-empty and unique")
     if len(set(args.sample_ids)) != len(args.sample_ids):
         raise ValueError("sample ids must be unique")
     if len(set(args.thresholds)) != len(args.thresholds):
@@ -163,6 +188,15 @@ def main() -> None:
         raise FileNotFoundError("Wan2.1 source or checkpoint directory is missing")
 
     args.output_root.mkdir(parents=True, exist_ok=True)
+    link = PROJECT_DIR / "experiment_results" / args.output_root.name
+    if link.is_symlink():
+        if link.resolve(strict=True) != args.output_root:
+            raise ValueError(f"result symlink points elsewhere: {link}")
+    elif link.exists():
+        raise FileExistsError(f"result index exists and is not a symlink: {link}")
+    else:
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(args.output_root, target_is_directory=True)
     protocol = {
         "schema_version": 1,
         "task": "t2v-1.3B",
@@ -174,9 +208,7 @@ def main() -> None:
         "guide_scale": 5.0,
         "seed": args.seed,
         "sample_ids": args.sample_ids,
-        "gpu_mapping": {
-            sample_id: args.gpus[index] for index, sample_id in enumerate(args.sample_ids)
-        },
+        "gpu_mapping": build_gpu_mapping(args.sample_ids, args.gpus),
         "use_ret_steps": False,
         "latency_metric": "pipeline_generate_wall_seconds",
         "speedup_aggregation": "sum(baseline latency) / sum(candidate latency)",
@@ -192,7 +224,7 @@ def main() -> None:
             encoding="utf-8",
         )
 
-    num_shards = len(args.sample_ids)
+    num_shards = len(args.gpus)
     if not args.skip_baseline:
         run_condition(
             args,

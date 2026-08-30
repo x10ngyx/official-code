@@ -1,0 +1,19 @@
+{
+  "schema": "teacache4wan22_runtime_protocol_v1",
+  "task": "t2v-A14B",
+  "size": "832*480",
+  "size_wh": [832, 480],
+  "frame_num": 45,
+  "sampling_steps": 50,
+  "sample_solver": "dpm++",
+  "shift": 12.0,
+  "guide_scale_low_high": [3.0, 4.0],
+  "boundary": 0.875,
+  "seed": 42,
+  "fps": 16,
+  "param_dtype": "torch.bfloat16",
+  "offload_model": true,
+  "t5_cpu": false,
+  "use_ret_steps": false,
+  "supported_parallelism": "single_gpu_only"
+}

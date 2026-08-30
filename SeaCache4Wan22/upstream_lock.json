@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "wan22": {
+    "repository": "https://github.com/Wan-Video/Wan2.2.git",
+    "commit": "42bf4cfaa384bc21833865abc2f9e6c0e67233dc",
+    "license": "Apache-2.0",
+    "original_file_sha256": {
+      "generate.py": "cae024b99a3d105fe273a8dfe724ea656f9c1a876ccc8534a8c2fbfb716950e7",
+      "wan/text2video.py": "2f212e1f6d7ba4408a25998091b70ee35dde8bcaaeaedd3ba03d6cdab84dc683",
+      "wan/modules/model.py": "8b39115298ca7322806c19b3165b3f435a94fe4a58f0624aec24f8e7f4997432"
+    },
+    "prepared_file_sha256": {
+      "generate.py": "43b5c37e84747efb40b0caeea9941d319804405d80444ec19e50b65729d3fe9d",
+      "wan/text2video.py": "c98af557adb35ae639a962a222d0a086dadad60738e947e52ffc9baced5dadf1",
+      "wan/modules/model.py": "4135cb632c3551c7f0a06e42b0b9d1b32d275d2675adbdd8abb0ea341a510366",
+      "wan/seacache.py": "9fe6c950746ac788c4f08d4543291ffffd538b2a1568b72b8a5346de5eaca422",
+      "wan/inference_timing.py": "42f921091ef8ddb77b682704da4a92096d2dbb333c1e682fe9b18f84a49e2de1"
+    }
+  },
+  "development_reference": {
+    "description": "Existing reviewed Wan2.2 CFG-synchronized SeaCache implementation used as the behavior reference; the public runtime is a clean extraction.",
+    "timestep_cache_sha256": "2a1b01767d8884cad95df6446408d18e3fba3abc94c05d70737d23d7351a592b",
+    "model_sha256": "715c3e69360b5f1fa0cc660da972a4eef0c25014be3009b5a76c2232282858a0",
+    "text2video_sha256": "9f28b1b050e71dd08312b291fe04ab46a24d8eaa5d3bbb138e00a297b6a4bb58"
+  },
+  "integration_artifacts": {
+    "patch": "patches/wan22_42bf4cf_seacache.patch",
+    "patch_sha256": "f4ff62ea1778c8f647ad9c33276fa039f3804ae9513143c279a193540bb4f528",
+    "runtime": "runtime/seacache.py",
+    "runtime_sha256": "9fe6c950746ac788c4f08d4543291ffffd538b2a1568b72b8a5346de5eaca422",
+    "timing_runtime": "runtime/inference_timing.py",
+    "timing_runtime_sha256": "42f921091ef8ddb77b682704da4a92096d2dbb333c1e682fe9b18f84a49e2de1",
+    "protocol": "configs/wan22_t2v_a14b_50step_dpmpp.json",
+    "protocol_sha256": "7dec6174e10e7bb9da0c9418d0b83d127b81656a2a67eb223f0b70f5ba5c444f"
+  },
+  "excluded_methods": [
+    "block cache",
+    "CFG cache",
+    "ZEUS",
+    "TeaCache",
+    "learned policy"
+  ]
+}

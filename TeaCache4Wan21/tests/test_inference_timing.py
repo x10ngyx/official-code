@@ -39,14 +39,28 @@ class FakeModel(nn.Module):
         return value
 
 
+class FakeTextEncoder:
+    def __call__(self, value: torch.Tensor) -> torch.Tensor:
+        return value
+
+
+class FakeVAE:
+    def decode(self, value: torch.Tensor) -> torch.Tensor:
+        return value
+
+
 class FakePipeline:
     def __init__(self) -> None:
         self.device = torch.device("cpu")
         self.model = FakeModel()
+        self.text_encoder = FakeTextEncoder()
+        self.vae = FakeVAE()
 
     def generate(self) -> torch.Tensor:
+        self.text_encoder(torch.zeros(1))
+        self.text_encoder(torch.zeros(1))
         first = self.model(torch.zeros(1))
-        return self.model(first)
+        return self.vae.decode(self.model(first))
 
 
 class InferenceTimingTests(unittest.TestCase):
@@ -68,6 +82,9 @@ class InferenceTimingTests(unittest.TestCase):
             self.assertTrue(torch.equal(actual, torch.tensor([4.0])))
             payload = json.loads(output.read_text(encoding="utf-8"))
         self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["component_latency"]["t5"]["call_count"], 2)
+        self.assertEqual(payload["component_latency"]["vae_decode"]["call_count"], 1)
         self.assertEqual(payload["model_forward_call_count"], 2)
         self.assertEqual(payload["transformer_block_count"], 2)
         self.assertEqual(payload["full_compute_forward_calls"], 2)
@@ -84,6 +101,7 @@ class InferenceTimingTests(unittest.TestCase):
             / "profile_wan21_dit.py",
         )
         timing = {
+            "schema_version": 2,
             "pipeline_init_wall_seconds": 2.0,
             "pipeline_generate_wall_seconds": 3.0,
             "model_forward_cuda_seconds": 0.5,
@@ -91,6 +109,11 @@ class InferenceTimingTests(unittest.TestCase):
             "full_compute_forward_calls": 1,
             "reuse_forward_calls": 1,
             "calls": [{"blocks_executed": 2}, {"blocks_executed": 0}],
+            "component_latency": {
+                "t5": {"call_count": 2, "cuda_seconds": 0.1, "host_span_seconds": 0.2},
+                "dit": {"call_count": 2, "cuda_seconds": 0.5, "host_span_seconds": 0.6},
+                "vae_decode": {"call_count": 1, "cuda_seconds": 0.3, "host_span_seconds": 0.4},
+            },
         }
         actual = profile.summarize_run(
             timing,
@@ -98,12 +121,18 @@ class InferenceTimingTests(unittest.TestCase):
             always_on_flops=10.0,
             full_forward_flops=100.0,
             block_count=2,
+            component_tflops={
+                "estimated_t5_tflops_per_video": 1.0,
+                "estimated_vae_decode_tflops_per_video": 2.0,
+            },
         )
         self.assertEqual(actual["estimated_dit_flops"], 110.0)
         self.assertEqual(actual["estimated_dit_tflops_per_video"], 110.0 / 1e12)
         self.assertEqual(
             actual["estimated_achieved_tflops_per_second"], 110.0 / 0.5 / 1e12
         )
+        self.assertEqual(actual["t5_cuda_seconds"], 0.1)
+        self.assertEqual(actual["vae_decode_cuda_seconds"], 0.3)
 
 
 if __name__ == "__main__":

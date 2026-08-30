@@ -10,6 +10,9 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 EXPERIMENT_DIR = PROJECT_DIR / "experiments" / "vbench200_t2v"
+CALIBRATION_DIR = (
+    PROJECT_DIR / "experiments" / "threshold_calibration_vbench_subset"
+)
 
 
 def load_module(name: str, filename: str):
@@ -22,7 +25,28 @@ def load_module(name: str, filename: str):
     return module
 
 
+def load_calibration_module():
+    path = CALIBRATION_DIR / "run_calibration.py"
+    spec = importlib.util.spec_from_file_location("threshold_calibration", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class Vbench200PerformanceTests(unittest.TestCase):
+    def test_eleven_prompt_calibration_mapping_round_robins_four_gpus(self):
+        module = load_calibration_module()
+        sample_ids = [f"sample_{index}" for index in range(11)]
+        self.assertEqual(
+            module.build_gpu_mapping(sample_ids, ["0", "1", "2", "3"]),
+            {
+                sample_id: str(index % 4)
+                for index, sample_id in enumerate(sample_ids)
+            },
+        )
+
     def test_four_gpu_launcher_locks_wan21_protocol_and_threshold(self):
         module = load_module("vbench200_launcher", "run_vbench200_4gpu.py")
         args = Namespace(
@@ -53,8 +77,8 @@ class Vbench200PerformanceTests(unittest.TestCase):
         self.assertEqual(command[command.index("--num-shards") + 1], "4")
         self.assertEqual(command[command.index("--shard-index") + 1], "3")
         self.assertEqual(command[command.index("--teacache-thresh") + 1], "0.08")
-        self.assertNotIn("--no-offload-model", command)
-        self.assertNotIn("--t5-on-gpu", command)
+        self.assertNotIn("--offload-model", command)
+        self.assertNotIn("--t5-cpu", command)
 
     def test_trace_aggregation_uses_inference_only_latency_and_actual_cache_path(self):
         module = load_module("vbench200_performance", "aggregate_performance.py")
@@ -74,6 +98,7 @@ class Vbench200PerformanceTests(unittest.TestCase):
                 path.write_text(
                     json.dumps(
                         {
+                            "schema_version": 2,
                             "status": "success",
                             "implementation": implementation,
                             "pipeline_init_wall_seconds": 99.0,
@@ -87,6 +112,11 @@ class Vbench200PerformanceTests(unittest.TestCase):
                                 call["blocks_executed"] == 0 for call in calls
                             ),
                             "calls": calls,
+                            "component_latency": {
+                                "t5": {"call_count": 2, "cuda_seconds": 1.0, "host_span_seconds": 1.1},
+                                "dit": {"call_count": 100, "cuda_seconds": cuda_seconds, "host_span_seconds": cuda_seconds},
+                                "vae_decode": {"call_count": 1, "cuda_seconds": 0.5, "host_span_seconds": 0.6},
+                            },
                         }
                     ),
                     encoding="utf-8",
@@ -101,6 +131,10 @@ class Vbench200PerformanceTests(unittest.TestCase):
                 full_forward_flops=1_000.0,
                 always_on_flops=100.0,
                 block_count=2,
+                component_tflops={
+                    "estimated_t5_tflops_per_video": 3.0,
+                    "estimated_vae_decode_tflops_per_video": 4.0,
+                },
             )
             teacache, _ = module.summarize_condition(
                 label="teacache",
@@ -110,6 +144,10 @@ class Vbench200PerformanceTests(unittest.TestCase):
                 full_forward_flops=1_000.0,
                 always_on_flops=100.0,
                 block_count=2,
+                component_tflops={
+                    "estimated_t5_tflops_per_video": 3.0,
+                    "estimated_vae_decode_tflops_per_video": 4.0,
+                },
             )
             self.assertEqual(
                 baseline["end_to_end_inference_latency_seconds"]["mean"], 20.0

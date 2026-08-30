@@ -18,7 +18,7 @@ PROJECT_DIR = SCRIPT_DIR.parents[1]
 REPOSITORY_DIR = PROJECT_DIR.parent
 VIDEO_METRICS_DIR = REPOSITORY_DIR / "VideoMetrics"
 VBENCH_DIR = REPOSITORY_DIR / "VbenchEvaluation"
-EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
+EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
 
 
 def available_log_path(path: Path) -> Path:

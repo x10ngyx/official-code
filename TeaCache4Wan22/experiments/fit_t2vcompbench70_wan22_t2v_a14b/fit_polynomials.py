@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import os
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -135,6 +137,22 @@ def main() -> None:
         "raw_forward_record_count": len(records),
         "within_stage_transition_count": len(paired),
         "primary_fit_record_count": len(eligible),
+        "fit_software": {
+            "python": sys.version,
+            "numpy": np.__version__,
+            "thread_environment": {
+                variable: os.environ[variable]
+                for variable in (
+                    "OPENBLAS_NUM_THREADS",
+                    "OMP_NUM_THREADS",
+                    "MKL_NUM_THREADS",
+                    "NUMEXPR_NUM_THREADS",
+                )
+            },
+            "fit_script_sha256": hashlib.sha256(
+                Path(__file__).read_bytes()
+            ).hexdigest(),
+        },
         "run_config": run_configs[0],
         "primary": primary,
         "diagnostic_all_within_stage_transitions": all_within_stage,
@@ -196,6 +214,7 @@ def main() -> None:
         "",
         "Primary fits use only runtime gate-eligible within-stage transitions under `use_ret_steps=False`.",
         "Cond/uncond observations are pooled into one polynomial per stage, with branch metrics reported separately.",
+        f"Fit software: Python `{sys.version.split()[0]}`, NumPy `{np.__version__}`, BLAS thread limits `1/1/1/1`.",
         "",
     ]
     for stage in ("high", "low"):

@@ -1,0 +1,415 @@
+diff --git a/generate.py b/generate.py
+index 3a5cbcd..a01c254 100644
+--- a/generate.py
++++ b/generate.py
+@@ -1,9 +1,11 @@
+ # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
++# Modified by TeaCache4Wan22: add the fixed-protocol TeaCache CLI.
+ import argparse
+ import logging
+ import os
+ import sys
+ import warnings
++from contextlib import nullcontext
+ from datetime import datetime
+
+ warnings.filterwarnings('ignore')
+@@ -15,9 +17,10 @@ import torch.distributed as dist
+ from PIL import Image
+
+ import wan
++from wan.inference_timing import patch_pipeline_timing
++from wan.teacache import TeaCacheConfig
+ from wan.configs import MAX_AREA_CONFIGS, SIZE_CONFIGS, SUPPORTED_SIZES, WAN_CONFIGS
+ from wan.distributed.util import init_distributed_group
+-from wan.utils.prompt_extend import DashScopePromptExpander, QwenPromptExpander
+ from wan.utils.utils import merge_video_audio, save_video, str2bool
+
+
+@@ -93,6 +96,32 @@ def _validate_args(args):
+     if args.frame_num is None:
+         args.frame_num = cfg.frame_num
+
++    if args.timestep_cache == "teacache":
++        requirements = (
++            (args.task == "t2v-A14B", "TeaCache4Wan22 v0.1 supports only t2v-A14B."),
++            (args.size == "832*480", "TeaCache coefficients require size 832*480."),
++            (args.frame_num == 45, "TeaCache coefficients require 45 frames."),
++            (args.sample_steps == 50, "TeaCache coefficients require 50 sampling steps."),
++            (args.sample_solver == "dpm++", "TeaCache coefficients require DPM++."),
++            (abs(args.sample_shift - 12.0) < 1e-12, "TeaCache coefficients require shift=12."),
++            (isinstance(args.sample_guide_scale, (list, tuple)) and list(args.sample_guide_scale) == [3.0, 4.0], "TeaCache coefficients require low/high CFG=(3,4)."),
++            (args.base_seed == 42, "TeaCache4Wan22 reproduction requires seed=42."),
++            (not args.t5_cpu, "TeaCache4Wan22 fixed protocol requires T5 on GPU."),
++            (args.convert_model_dtype, "TeaCache4Wan22 fixed protocol requires BF16 model conversion."),
++            (args.teacache_threshold > 0, "TeaCache threshold must be positive."),
++            (bool(args.teacache_coefficients), "TeaCache coefficients JSON is required."),
++            (not args.use_prompt_extend, "TeaCache4Wan22 fixed protocol disables prompt extension."),
++        )
++        for satisfied, message in requirements:
++            if not satisfied:
++                raise ValueError(message)
++    else:
++        if (args.teacache_threshold != 0 or args.teacache_coefficients is not None
++                or args.teacache_trace is not None):
++            raise ValueError(
++                "TeaCache threshold, coefficients, and trace require --timestep_cache teacache."
++            )
++
+     args.base_seed = args.base_seed if args.base_seed >= 0 else random.randint(
+         0, sys.maxsize)
+     # Size check
+@@ -221,6 +250,32 @@ def _parse_args():
+         action="store_true",
+         default=False,
+         help="Whether to convert model paramerters dtype.")
++    parser.add_argument(
++        "--timestep_cache",
++        type=str,
++        default="none",
++        choices=["none", "teacache"],
++        help="Timestep cache method. TeaCache4Wan22 v0.1 supports TeaCache alone.")
++    parser.add_argument(
++        "--teacache_threshold",
++        type=float,
++        default=0.0,
++        help="Single accumulated TeaCache threshold; positive only when TeaCache is enabled.")
++    parser.add_argument(
++        "--teacache_coefficients",
++        type=str,
++        default=None,
++        help="Protocol-bound high/low quartic coefficient JSON.")
++    parser.add_argument(
++        "--teacache_trace",
++        type=str,
++        default=None,
++        help="Optional JSON path for the complete TeaCache decision trace.")
++    parser.add_argument(
++        "--timing_trace",
++        type=str,
++        default=None,
++        help="Optional JSON path for structured inference-only timing (baseline or TeaCache).")
+
+     # animate
+     parser.add_argument(
+@@ -323,6 +378,15 @@ def generate(args):
+         args.offload_model = False if world_size > 1 else True
+         logging.info(
+             f"offload_model is not specified, set to {args.offload_model}.")
++    if args.timestep_cache == "teacache":
++        if world_size != 1:
++            raise ValueError("TeaCache4Wan22 v0.1 supports one GPU only.")
++        if args.t5_fsdp or args.dit_fsdp or args.ulysses_size > 1:
++            raise ValueError(
++                "TeaCache4Wan22 v0.1 does not support FSDP or sequence parallelism."
++            )
++        if not args.offload_model:
++            raise ValueError("TeaCache4Wan22 fixed protocol requires model offload.")
+     if world_size > 1:
+         torch.cuda.set_device(local_rank)
+         dist.init_process_group(
+@@ -343,6 +407,8 @@ def generate(args):
+         init_distributed_group()
+
+     if args.use_prompt_extend:
++        from wan.utils.prompt_extend import DashScopePromptExpander, QwenPromptExpander
++
+         if args.prompt_extend_method == "dashscope":
+             prompt_expander = DashScopePromptExpander(
+                 model_name=args.prompt_extend_model,
+@@ -402,17 +468,40 @@ def generate(args):
+
+     if "t2v" in args.task:
+         logging.info("Creating WanT2V pipeline.")
+-        wan_t2v = wan.WanT2V(
+-            config=cfg,
+-            checkpoint_dir=args.ckpt_dir,
+-            device_id=device,
+-            rank=rank,
+-            t5_fsdp=args.t5_fsdp,
+-            dit_fsdp=args.dit_fsdp,
+-            use_sp=(args.ulysses_size > 1),
+-            t5_cpu=args.t5_cpu,
+-            convert_model_dtype=args.convert_model_dtype,
++        timing_context = (
++            patch_pipeline_timing(
++                wan,
++                task=args.task,
++                output_path=args.timing_trace,
++                implementation=(
++                    "teacache" if args.timestep_cache == "teacache" else "wan22"
++                ),
++            )
++            if args.timing_trace
++            else nullcontext()
+         )
++        with timing_context:
++            wan_t2v = wan.WanT2V(
++                config=cfg,
++                checkpoint_dir=args.ckpt_dir,
++                device_id=device,
++                rank=rank,
++                t5_fsdp=args.t5_fsdp,
++                dit_fsdp=args.dit_fsdp,
++                use_sp=(args.ulysses_size > 1),
++                t5_cpu=args.t5_cpu,
++                convert_model_dtype=args.convert_model_dtype,
++            )
++
++        teacache_config = None
++        if args.timestep_cache == "teacache":
++            teacache_config = TeaCacheConfig(
++                threshold=args.teacache_threshold,
++                coefficients_path=args.teacache_coefficients,
++                trace_path=args.teacache_trace,
++                use_ret_steps=False,
++            )
++            logging.info("Enabled TeaCache: %s", teacache_config)
+
+         logging.info(f"Generating video ...")
+         video = wan_t2v.generate(
+@@ -424,7 +513,8 @@ def generate(args):
+             sampling_steps=args.sample_steps,
+             guide_scale=args.sample_guide_scale,
+             seed=args.base_seed,
+-            offload_model=args.offload_model)
++            offload_model=args.offload_model,
++            teacache_config=teacache_config)
+     elif "ti2v" in args.task:
+         logging.info("Creating WanTI2V pipeline.")
+         wan_ti2v = wan.WanTI2V(
+diff --git a/wan/modules/model.py b/wan/modules/model.py
+index 6982fa1..1876645 100644
+--- a/wan/modules/model.py
++++ b/wan/modules/model.py
+@@ -1,4 +1,5 @@
+ # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
++# Modified by TeaCache4Wan22: add an explicit block-residual TeaCache gate.
+ import math
+
+ import torch
+@@ -414,6 +415,11 @@ class WanModel(ModelMixin, ConfigMixin):
+         context,
+         seq_len,
+         y=None,
++        teacache=None,
++        teacache_stage=None,
++        teacache_branch=None,
++        teacache_step_index=None,
++        teacache_num_steps=None,
+     ):
+         r"""
+         Forward pass through the diffusion model
+@@ -486,8 +492,41 @@ class WanModel(ModelMixin, ConfigMixin):
+             context=context,
+             context_lens=context_lens)
+
+-        for block in self.blocks:
+-            x = block(x, **kwargs)
++        if teacache is None:
++            for block in self.blocks:
++                x = block(x, **kwargs)
++        else:
++            if (teacache_stage is None or teacache_branch is None or
++                    teacache_step_index is None or teacache_num_steps is None):
++                raise ValueError(
++                    "TeaCache requires stage, branch, step_index, and num_steps."
++                )
++            # Wan2.2 expands a scalar timestep across all tokens.  Keeping only
++            # the first token exactly reproduces the TeaCache `e` gate without
++            # retaining the multi-GiB token-wise FP32 time embedding.
++            compact_e = e[:, 0, :]
++            should_reuse = teacache.plan_step(
++                teacache_stage,
++                teacache_step_index,
++                teacache_num_steps,
++                compact_e,
++            )
++            if should_reuse:
++                x = x + teacache.reuse_residual(
++                    teacache_stage,
++                    teacache_branch,
++                    teacache_step_index,
++                )
++            else:
++                block_input = x.detach().clone()
++                for block in self.blocks:
++                    x = block(x, **kwargs)
++                teacache.record_recompute(
++                    teacache_stage,
++                    teacache_branch,
++                    teacache_step_index,
++                    x - block_input,
++                )
+
+         # head
+         x = self.head(x, e)
+diff --git a/wan/text2video.py b/wan/text2video.py
+index 7c79c66..b54b66c 100644
+--- a/wan/text2video.py
++++ b/wan/text2video.py
+@@ -1,5 +1,7 @@
+ # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
++# Modified by TeaCache4Wan22: integrate stage-aware TeaCache.
+ import gc
++import json
+ import logging
+ import math
+ import os
+@@ -20,6 +22,7 @@ from .distributed.util import get_world_size
+ from .modules.model import WanModel
+ from .modules.t5 import T5EncoderModel
+ from .modules.vae2_1 import Wan2_1_VAE
++from .teacache import TeaCacheConfig, TeaCacheController
+ from .utils.fm_solvers import (
+     FlowDPMSolverMultistepScheduler,
+     get_sampling_sigmas,
+@@ -74,6 +77,9 @@ class WanT2V:
+         self.rank = rank
+         self.t5_cpu = t5_cpu
+         self.init_on_cpu = init_on_cpu
++        self.t5_fsdp = t5_fsdp
++        self.dit_fsdp = dit_fsdp
++        self.use_sp = use_sp
+
+         self.num_train_timesteps = config.num_train_timesteps
+         self.boundary = config.boundary
+@@ -210,7 +216,8 @@ class WanT2V:
+                  guide_scale=5.0,
+                  n_prompt="",
+                  seed=-1,
+-                 offload_model=True):
++                 offload_model=True,
++                 teacache_config=None):
+         r"""
+         Generates video frames from text prompt using diffusion process.
+
+@@ -237,6 +244,9 @@ class WanT2V:
+                 Random seed for noise generation. If -1, use random seed.
+             offload_model (`bool`, *optional*, defaults to True):
+                 If True, offloads models to CPU during generation to save VRAM
++            teacache_config (`TeaCacheConfig`, *optional*, defaults to None):
++                Non-retention TeaCache configuration. TeaCache4Wan22 v0.1 is
++                restricted to single-GPU T2V-A14B inference.
+
+         Returns:
+             torch.Tensor:
+@@ -264,6 +274,16 @@ class WanT2V:
+         seed_g = torch.Generator(device=self.device)
+         seed_g.manual_seed(seed)
+
++        teacache = None
++        if teacache_config is not None:
++            if not isinstance(teacache_config, TeaCacheConfig):
++                raise TypeError("teacache_config must be a TeaCacheConfig instance.")
++            if self.t5_fsdp or self.dit_fsdp or self.use_sp or self.sp_size != 1:
++                raise ValueError(
++                    "TeaCache4Wan22 v0.1 supports only single-GPU inference without FSDP/SP."
++                )
++            teacache = TeaCacheController(teacache_config)
++
+         if not self.t5_cpu:
+             self.text_encoder.model.to(self.device)
+             context = self.text_encoder([input_prompt], self.device)
+@@ -326,27 +346,67 @@ class WanT2V:
+             else:
+                 raise NotImplementedError("Unsupported solver.")
+
++            runtime_protocol = {
++                "task": "t2v-A14B",
++                "size_wh": [int(size[0]), int(size[1])],
++                "frame_num": int(frame_num),
++                "sampling_steps": int(sampling_steps),
++                "sample_solver": sample_solver,
++                "shift": float(shift),
++                "guide_scale_low_high": [float(guide_scale[0]), float(guide_scale[1])],
++                "boundary": float(self.boundary),
++                "param_dtype": str(self.param_dtype),
++                "use_ret_steps": False,
++            }
++            if teacache is not None:
++                teacache.validate_runtime_protocol(runtime_protocol)
++
+             # sample videos
+             latents = noise
+
+             arg_c = {'context': context, 'seq_len': seq_len}
+             arg_null = {'context': context_null, 'seq_len': seq_len}
+
+-            for _, t in enumerate(tqdm(timesteps)):
++            previous_model_stage = None
++            for step_index, t in enumerate(tqdm(timesteps)):
+                 latent_model_input = latents
+                 timestep = [t]
+
+                 timestep = torch.stack(timestep)
+
++                model_stage = 'high' if t.item() >= boundary else 'low'
++                if (teacache is not None and previous_model_stage is not None and
++                        previous_model_stage != model_stage):
++                    teacache.clear_stage(previous_model_stage)
++                    torch.cuda.empty_cache()
++                    logging.info(
++                        f"Cleared TeaCache state for completed {previous_model_stage} stage."
++                    )
++                previous_model_stage = model_stage
++
+                 model = self._prepare_model_for_timestep(
+                     t, boundary, offload_model)
+                 sample_guide_scale = guide_scale[1] if t.item(
+                 ) >= boundary else guide_scale[0]
+
+                 noise_pred_cond = model(
+-                    latent_model_input, t=timestep, **arg_c)[0]
++                    latent_model_input,
++                    t=timestep,
++                    teacache=teacache,
++                    teacache_stage=model_stage,
++                    teacache_branch='cond',
++                    teacache_step_index=step_index,
++                    teacache_num_steps=len(timesteps),
++                    **arg_c)[0]
+                 noise_pred_uncond = model(
+-                    latent_model_input, t=timestep, **arg_null)[0]
++                    latent_model_input,
++                    t=timestep,
++                    teacache=teacache,
++                    teacache_stage=model_stage,
++                    teacache_branch='uncond',
++                    teacache_step_index=step_index,
++                    teacache_num_steps=len(timesteps),
++                    **arg_null)[0]
+
+                 noise_pred = noise_pred_uncond + sample_guide_scale * (
+                     noise_pred_cond - noise_pred_uncond)
+@@ -360,12 +420,30 @@ class WanT2V:
+                 latents = [temp_x0.squeeze(0)]
+
+             x0 = latents
++            if teacache is not None:
++                teacache.validate_complete(len(timesteps))
++                teacache.release()
++                torch.cuda.empty_cache()
+             if offload_model:
+                 self.low_noise_model.cpu()
+                 self.high_noise_model.cpu()
+                 torch.cuda.empty_cache()
+             if self.rank == 0:
+                 videos = self.vae.decode(x0)
++                if teacache is not None:
++                    summary = teacache.summary()
++                    logging.info(
++                        "TeaCache summary: %s",
++                        json.dumps(
++                            {key: value for key, value in summary.items() if key != "decisions"},
++                            sort_keys=True,
++                        ),
++                    )
++                    trace_path = teacache.write_trace(
++                        extra={"runtime_protocol": runtime_protocol}
++                    )
++                    if trace_path is not None:
++                        logging.info("TeaCache trace: %s", trace_path)
+
+         del noise, latents
+         del sample_scheduler

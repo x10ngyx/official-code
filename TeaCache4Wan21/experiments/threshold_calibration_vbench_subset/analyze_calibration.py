@@ -6,18 +6,43 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import statistics
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 
 TARGETS = (1.8, 2.4, 3.0)
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = SCRIPT_DIR.parents[1]
+REPOSITORY_DIR = PROJECT_DIR.parent
+EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
+PERFORMANCE_SCRIPT = PROJECT_DIR / "experiments/vbench200_t2v/aggregate_performance.py"
+VIDEO_METRICS_SCRIPT = REPOSITORY_DIR / "VideoMetrics/evaluate.py"
+VBENCH_SCRIPT = REPOSITORY_DIR / "VbenchEvaluation/run_vbench200.sh"
+sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
+from reporting import extract_component_latency  # noqa: E402
+
+THREAD_ENV = {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--result-root", type=Path, required=True)
     parser.add_argument("--targets", type=float, nargs="+", default=TARGETS)
+    parser.add_argument("--calflops-profile", type=Path, required=True)
+    parser.add_argument("--metric-device", default="cuda:0")
+    parser.add_argument("--lpips-batch-size", type=int, default=4)
+    parser.add_argument("--model-cache", type=Path, required=True)
+    parser.add_argument("--vbench-python", type=Path, required=True)
+    parser.add_argument("--vbench-cache", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -47,8 +72,134 @@ def load_timings(condition_dir: Path, expected_ids: list[str]) -> dict[str, dict
             raise ValueError(f"invalid pipeline latency: {path}")
         if not isinstance(cuda_latency, (int, float)) or cuda_latency <= 0:
             raise ValueError(f"invalid DiT CUDA latency: {path}")
+        extract_component_latency(payload)
         timings[sample_id] = payload
     return timings
+
+
+def require_external(path: Path) -> Path:
+    resolved = path.expanduser().resolve(strict=True)
+    try:
+        resolved.relative_to(EXP_ROOT)
+    except ValueError as error:
+        raise ValueError(f"artifact must be below {EXP_ROOT}: {resolved}") from error
+    return resolved
+
+
+def run_logged(command: list[str], log: Path, *, env: dict[str, str] | None = None) -> None:
+    if log.exists():
+        raise FileExistsError(f"incomplete prior command log exists: {log}")
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("x", encoding="utf-8") as handle:
+        handle.write("command=" + " ".join(command) + "\n")
+        handle.flush()
+        subprocess.run(
+            command,
+            check=True,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
+
+
+def ensure_evaluations(
+    *,
+    root: Path,
+    condition_dir: Path,
+    label: str,
+    expected_videos: int,
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    destination = root / "analysis" / label
+    performance_path = destination / "performance" / "summary.json"
+    if not performance_path.is_file():
+        run_logged(
+            [
+                sys.executable,
+                str(PERFORMANCE_SCRIPT),
+                "--baseline-dir",
+                str(root / "baseline"),
+                "--teacache-dir",
+                str(condition_dir),
+                "--calflops-profile",
+                str(args.calflops_profile),
+                "--output-dir",
+                str(destination / "performance"),
+                "--expected-videos",
+                str(expected_videos),
+            ],
+            destination / "performance.log",
+            env={**os.environ, **THREAD_ENV},
+        )
+    metrics_path = destination / "video_metrics" / "summary.json"
+    if not metrics_path.is_file():
+        run_logged(
+            [
+                sys.executable,
+                str(VIDEO_METRICS_SCRIPT),
+                "--reference-dir",
+                str(root / "baseline" / "videos"),
+                "--candidate-dir",
+                str(condition_dir / "videos"),
+                "--extension",
+                ".mp4",
+                "--expected-frames",
+                "81",
+                "--device",
+                args.metric_device,
+                "--lpips-batch-size",
+                str(args.lpips_batch_size),
+                "--model-cache",
+                str(args.model_cache),
+                "--output-dir",
+                str(destination / "video_metrics"),
+            ],
+            destination / "video_metrics.log",
+            env={**os.environ, **THREAD_ENV},
+        )
+    vbench_env = {**os.environ, **THREAD_ENV}
+    vbench_env["PYTHON_BIN"] = str(args.vbench_python)
+    vbench_env["VBENCH_CACHE_DIR"] = str(args.vbench_cache)
+    baseline_vbench_path = (
+        root / "analysis" / "vbench_baseline" / "vbench200_aggregate_scores.json"
+    )
+    if not baseline_vbench_path.is_file():
+        run_logged(
+            [
+                "bash",
+                str(VBENCH_SCRIPT),
+                str(root / "baseline" / "videos"),
+                str(root / "analysis" / "vbench_baseline"),
+                "1",
+                "--allow-missing",
+            ],
+            root / "analysis" / "vbench_baseline.log",
+            env=vbench_env,
+        )
+    candidate_vbench_path = destination / "vbench" / "vbench200_aggregate_scores.json"
+    if not candidate_vbench_path.is_file():
+        run_logged(
+            [
+                "bash",
+                str(VBENCH_SCRIPT),
+                str(condition_dir / "videos"),
+                str(destination / "vbench"),
+                "1",
+                "--allow-missing",
+            ],
+            destination / "vbench.log",
+            env=vbench_env,
+        )
+    return tuple(
+        load_json(path)
+        for path in (
+            performance_path,
+            metrics_path,
+            baseline_vbench_path,
+            candidate_vbench_path,
+        )
+    )
 
 
 def interpolate(rows: list[dict[str, Any]], target: float) -> dict[str, Any] | None:
@@ -83,7 +234,11 @@ def interpolate(rows: list[dict[str, Any]], target: float) -> dict[str, Any] | N
 
 def main() -> None:
     args = parse_args()
-    root = args.result_root.expanduser().resolve()
+    root = require_external(args.result_root)
+    args.calflops_profile = require_external(args.calflops_profile)
+    args.model_cache = args.model_cache.expanduser().resolve(strict=True)
+    args.vbench_python = args.vbench_python.expanduser().resolve(strict=True)
+    args.vbench_cache = args.vbench_cache.expanduser().resolve(strict=True)
     protocol = load_json(root / "calibration_protocol.json")
     sample_ids = protocol.get("sample_ids")
     if not isinstance(sample_ids, list) or not sample_ids:
@@ -146,6 +301,33 @@ def main() -> None:
             "reuse_forward_calls": reuse_calls,
             "reuse_fraction": reuse_calls / (full_calls + reuse_calls),
         }
+        performance, metrics, baseline_vbench, candidate_vbench = ensure_evaluations(
+            root=root,
+            condition_dir=condition_path.parent,
+            label=str(condition["label"]),
+            expected_videos=len(sample_ids),
+            args=args,
+        )
+        baseline_performance = performance["conditions"]["baseline"]
+        candidate_performance = performance["conditions"]["teacache"]
+        metric_values = metrics["metrics"]
+        row.update(
+            {
+                "baseline_t5_cuda_seconds": baseline_performance["t5_cuda_seconds"]["total"],
+                "candidate_t5_cuda_seconds": candidate_performance["t5_cuda_seconds"]["total"],
+                "baseline_vae_decode_cuda_seconds": baseline_performance["vae_decode_cuda_seconds"]["total"],
+                "candidate_vae_decode_cuda_seconds": candidate_performance["vae_decode_cuda_seconds"]["total"],
+                "baseline_estimated_dit_total_tflops": baseline_performance["estimated_dit_total_tflops"],
+                "candidate_estimated_dit_total_tflops": candidate_performance["estimated_dit_total_tflops"],
+                "estimated_t5_tflops_per_video": candidate_performance["estimated_t5_tflops_per_video"],
+                "estimated_vae_decode_tflops_per_video": candidate_performance["estimated_vae_decode_tflops_per_video"],
+                "psnr_rgb_db": metric_values["psnr_rgb_db"]["mean"],
+                "ssim_rgb": metric_values["ssim_rgb"]["mean"],
+                "lpips_alex_v0_1_spatial": metric_values["lpips_alex_v0_1_spatial"]["mean"],
+                "baseline_vbench_score": baseline_vbench["aggregate_scores"]["total_score"],
+                "candidate_vbench_score": candidate_vbench["aggregate_scores"]["total_score"],
+            }
+        )
         rows.append(row)
         for sample_id, speedup in zip(sample_ids, prompt_speedups):
             per_prompt.append(
@@ -217,10 +399,17 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(per_prompt)
     summary = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "complete",
         "latency_metric": protocol["latency_metric"],
         "speedup_aggregation": protocol["speedup_aggregation"],
+        "quality_metrics": [
+            "psnr_rgb_db",
+            "ssim_rgb",
+            "lpips_alex_v0_1_spatial",
+            "vbench_score",
+        ],
+        "flops_headline": "estimated DiT TFLOPs; T5 and VAE decode recorded separately",
         "sample_ids": sample_ids,
         "baseline": {
             "pipeline_seconds": baseline_pipeline,
@@ -240,16 +429,17 @@ def main() -> None:
         "Inference speedup is the ratio of summed `pipeline_generate_wall_seconds`; "
         "model loading and MP4 export are excluded.",
         "",
-        "| threshold | inference speedup | DiT CUDA speedup | reuse fraction | prompt range |",
-        "| ---: | ---: | ---: | ---: | ---: |",
+        "| threshold | inference speedup | DiT TFLOPs | PSNR | SSIM | LPIPS | VBench |",
+        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for row in rows:
         report_lines.append(
             f"| {row['threshold']:.4f} | "
             f"{row['inference_speedup_ratio_of_sums']:.4f}× | "
-            f"{row['dit_cuda_speedup_ratio_of_sums']:.4f}× | "
-            f"{row['reuse_fraction']:.3f} | "
-            f"{row['min_per_prompt_speedup']:.4f}–{row['max_per_prompt_speedup']:.4f}× |"
+            f"{row['candidate_estimated_dit_total_tflops']:.4f} | "
+            f"{row['psnr_rgb_db']:.4f} | {row['ssim_rgb']:.4f} | "
+            f"{row['lpips_alex_v0_1_spatial']:.4f} | "
+            f"{row['candidate_vbench_score']:.4f} |"
         )
     report_lines.extend(("", "## Targets", ""))
     for target in targets:

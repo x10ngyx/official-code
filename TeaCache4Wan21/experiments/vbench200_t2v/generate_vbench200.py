@@ -21,14 +21,33 @@ REPOSITORY_DIR = PROJECT_DIR.parent
 PROMPTS_PATH = REPOSITORY_DIR / "Vbench200" / "prompts.jsonl"
 ENTRYPOINT = PROJECT_DIR / "generate.py"
 VALIDATOR = PROJECT_DIR / "validate_reproduction.py"
-EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
+EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
 EXPECTED_WAN21_COMMIT = "65386b2e03c490796eede31b0325a6a595cc684e"
+THREAD_ENV = {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+}
+sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
+from reporting import extract_component_latency  # noqa: E402
+
+
+def validate_timing_payload(payload: object, implementation: str, path: Path) -> dict[str, object]:
+    if (
+        not isinstance(payload, dict)
+        or payload.get("status") != "success"
+        or payload.get("implementation") != implementation
+    ):
+        raise RuntimeError(f"invalid inference timing trace: {path}")
+    extract_component_latency(payload)
+    return payload
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--implementation", choices=("wan21", "teacache"), required=True)
-    parser.add_argument("--task", choices=("t2v-1.3B", "t2v-14B"), required=True)
+    parser.add_argument("--task", choices=("t2v-1.3B",), required=True)
     parser.add_argument("--wan21-root", type=Path, required=True)
     parser.add_argument("--ckpt-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -41,9 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-shift", type=float, default=5.0)
     parser.add_argument("--guide-scale", type=float, default=5.0)
     parser.add_argument("--sample-solver", choices=("unipc", "dpm++"), default="unipc")
-    parser.add_argument("--no-offload-model", action="store_false", dest="offload_model")
-    parser.add_argument("--t5-on-gpu", action="store_false", dest="t5_cpu")
-    parser.set_defaults(offload_model=True, t5_cpu=True)
+    parser.set_defaults(offload_model=False, t5_cpu=False)
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--num-shards", type=int, default=1)
     selection = parser.add_mutually_exclusive_group()
@@ -103,7 +120,20 @@ def validate_args(args: argparse.Namespace) -> None:
     if len(set(args.seeds)) != len(args.seeds):
         raise ValueError("--seeds must not contain duplicates")
     if args.size is None:
-        args.size = "832*480" if args.task == "t2v-1.3B" else "1280*720"
+        args.size = "832*480"
+    if (
+        args.task != "t2v-1.3B"
+        or args.size != "832*480"
+        or args.frame_num != 81
+        or args.sample_steps != 50
+        or args.sample_shift != 5.0
+        or args.guide_scale != 5.0
+        or args.sample_solver != "unipc"
+        or args.seeds != [42]
+        or args.offload_model
+        or args.t5_cpu
+    ):
+        raise ValueError("generation arguments violate the fixed Wan2.1-1.3B protocol")
     if args.implementation == "teacache":
         if args.teacache_thresh is None or args.teacache_thresh < 0:
             raise ValueError("TeaCache generation requires --teacache-thresh >= 0")
@@ -123,6 +153,7 @@ def validate_args(args: argparse.Namespace) -> None:
     subprocess.run(
         [sys.executable, str(VALIDATOR), "--wan21-root", str(args.wan21_root)],
         check=True,
+        env={**os.environ, **THREAD_ENV},
     )
 
 
@@ -171,8 +202,6 @@ def build_command(
     ]
     if timing_output is not None:
         command.extend(("--timing_json", str(timing_output)))
-    if args.t5_cpu:
-        command.append("--t5_cpu")
     if args.implementation == "teacache":
         command.extend(
             (
@@ -289,6 +318,7 @@ def main() -> None:
 
     manifest_path = args.output_dir / f"generation_manifest.shard_{args.shard_index:03d}.jsonl"
     env = os.environ.copy()
+    env.update(THREAD_ENV)
     env["PYTHONPATH"] = str(args.wan21_root) + (
         os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
     )
@@ -316,16 +346,9 @@ def main() -> None:
                 expected_implementation = (
                     "teacache" if args.implementation == "teacache" else "wan21"
                 )
-                if (
-                    not isinstance(previous_timing, dict)
-                    or previous_timing.get("status") != "success"
-                    or previous_timing.get("implementation")
-                    != expected_implementation
-                ):
-                    raise RuntimeError(
-                        "resume found an invalid inference timing trace: "
-                        f"{timing_output}"
-                    )
+                validate_timing_payload(
+                    previous_timing, expected_implementation, timing_output
+                )
                 skipped += 1
                 continue
             raise FileExistsError(f"refusing to overwrite existing output: {output}")
@@ -390,11 +413,11 @@ def main() -> None:
             raise subprocess.CalledProcessError(result.returncode, command)
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError(f"generation returned success without a non-empty video: {output}")
-        if not isinstance(timing, dict) or timing.get("status") != "success":
-            raise RuntimeError(
-                "generation returned success without a successful inference timing "
-                f"trace: {timing_output}"
-            )
+        validate_timing_payload(
+            timing,
+            "teacache" if args.implementation == "teacache" else "wan21",
+            timing_output,
+        )
         completed += 1
 
     summary = {

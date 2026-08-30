@@ -25,8 +25,8 @@ VBench score 使用 `VbenchEvaluation/` 的 Vbench200 子集协议，不使用 T
 - `upstream_lock.json`：TeaCache、Wan2.1 版本和关键文件哈希。
 - `validate_reproduction.py`：原始 baseline、官方方法、兼容源码和评测边界验证。
 - `tests/`：无需模型或 GPU 的静态集成回归测试。
-- `experiments/vbench200_t2v/`：Wan2.1-T2V-1.3B/14B 批量生成与自有评测编排。
-- `experiments/threshold_zero_smoke/`：一致性、latency 和 Calflops TFLOPs 冒烟测试。
+- `experiments/vbench200_t2v/`：固定 Wan2.1-T2V-1.3B 批量生成与统一评测编排。
+- `experiments/threshold_zero_smoke/`：一致性、组件 latency/TFLOPs 与统一画质冒烟测试。
 - `experiment_results/`：外部实验结果索引；大文件不得保存在代码目录。
 - `PROGRESS.md`、`logs/`：本地状态面板和精炼交接记录。
 
@@ -42,7 +42,7 @@ pip install -r requirements.txt
 ```
 
 Wan2.1 官方要求 PyTorch 2.4.0 或更高版本。模型权重仍放在工作区统一的
-`models/` HDD 目录中，不复制进本项目。运行前验证源码：
+`models/` 目录中，不复制进本项目。运行前验证源码：
 
 ```bash
 python validate_reproduction.py --wan21-root /path/to/Wan2.1
@@ -56,12 +56,11 @@ python validate_reproduction.py --wan21-root /path/to/Wan2.1
 bash run_wan21.sh /path/to/Wan2.1 \
   --task t2v-1.3B \
   --size '832*480' \
-  --ckpt_dir /home/star/xiongyuxiang/tmp/models/Wan2.1-T2V-1.3B \
+  --ckpt_dir /path/to/models/Wan2.1-T2V-1.3B \
   --prompt 'Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.' \
   --base_seed 42 \
-  --offload_model True \
-  --t5_cpu \
-  --save_file /mnt/hdd/xiongyuxiang/tmp/exp/teacache_wan21/no_cache.mp4
+  --offload_model False \
+  --save_file /all/yiran07-disk3/huteng_data/exp/teacache_wan21/no_cache.mp4
 ```
 
 官方 TeaCache T2V-1.3B fast 配置：
@@ -72,12 +71,11 @@ bash run_wan21.sh /path/to/Wan2.1 \
   --teacache_thresh 0.08 \
   --task t2v-1.3B \
   --size '832*480' \
-  --ckpt_dir /home/star/xiongyuxiang/tmp/models/Wan2.1-T2V-1.3B \
+  --ckpt_dir /path/to/models/Wan2.1-T2V-1.3B \
   --prompt 'Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.' \
   --base_seed 42 \
-  --offload_model True \
-  --t5_cpu \
-  --save_file /mnt/hdd/xiongyuxiang/tmp/exp/teacache_wan21/teacache_0.08.mp4
+  --offload_model False \
+  --save_file /all/yiran07-disk3/huteng_data/exp/teacache_wan21/teacache_0.08.mp4
 ```
 
 官方代码通过 checkpoint 路径名中的 `1.3B`、`14B`、`480P` 或 `720P` 选择拟合
@@ -100,14 +98,15 @@ full-compute，必须与 no-cache baseline 完全一致。这个零值边界是�
 ## Latency 与 TFLOPs
 
 统一入口接受可选 `--timing_json /path/to/timing.json`。启用后记录 pipeline 初始化、
-pipeline generate、每次 Wan DiT forward 的 CUDA event 时间，以及每次 forward 实际
-执行的 transformer block 数；不启用时 baseline 仍走原始直接调用路径。
+完整 pipeline generate、T5/DiT/VAE decode 的 CUDA event 与 host span，以及每次 DiT
+forward 实际执行的 transformer block 数；不启用时 baseline 仍走原始直接调用路径。
 
 完整性能冒烟命令和口径见 `experiments/threshold_zero_smoke/README.md`。TFLOPs 使用
 本仓库 `CalflopsEvaluation/` 锁定的 Calflops 0.3.2：自动统计可见算子，并对自定义
 FlashAttention CUDA kernel 做显式 dense-attention 公式补偿。输出同时区分理论
-运算量 `TFLOPs` 和根据 DiT CUDA 时间换算的吞吐 `TFLOP/s`；默认范围是
-DiT forward-only，不包含 T5、VAE、scheduler 和 MP4 导出。
+运算量 `TFLOPs` 和根据 DiT CUDA 时间换算的吞吐 `TFLOP/s`。正式 headline 是按实际
+调用轨迹累计的 DiT TFLOPs，同时分别保存两次 UMT5 encoder forward 和一次 VAE
+decode 的 TFLOPs；tokenizer、scheduler 和 MP4 导出不在这些组件计数内。
 
 ## Vbench200 与成对质量评测
 

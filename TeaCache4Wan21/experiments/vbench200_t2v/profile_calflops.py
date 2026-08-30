@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.metadata
 import json
 import math
 import sys
@@ -15,18 +14,18 @@ from typing import Any
 import torch
 from torch import nn
 
-from calflops import calculate_flops
-
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR.parents[1]
 REPOSITORY_DIR = PROJECT_DIR.parent
 CALFLOPS_EVALUATION_DIR = REPOSITORY_DIR / "CalflopsEvaluation"
-EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
+EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
 TFLOP_DIVISOR = 1_000_000_000_000
 
 sys.path.insert(0, str(CALFLOPS_EVALUATION_DIR))
+sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
 from calflops_eval import dense_attention_counts  # noqa: E402
+from calflops_loader import load_calflops  # noqa: E402
+from component_flops import profile_t5, profile_vae_decode  # noqa: E402
 
 
 class WanForwardProfile(nn.Module):
@@ -74,10 +73,11 @@ def require_external_output(path: Path) -> Path:
 def profile_case(
     wrapper: nn.Module,
     inputs: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+    calculate_flops_fn: Any,
 ) -> dict[str, Any]:
     torch.cuda.synchronize()
     started = time.perf_counter()
-    flops, macs, params = calculate_flops(
+    flops, macs, params = calculate_flops_fn(
         model=wrapper,
         args=list(inputs),
         kwargs={},
@@ -102,6 +102,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wan21-root", type=Path, required=True)
     parser.add_argument("--checkpoint-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--calflops-source", type=Path)
     parser.add_argument("--width", type=int, default=832)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--frame-num", type=int, default=81)
@@ -123,9 +124,13 @@ def main() -> None:
         raise ValueError("checkpoint path must identify Wan2.1-T2V-1.3B")
     if not torch.cuda.is_available():
         raise RuntimeError("Wan Calflops profiling requires CUDA")
+    calculate_flops_fn, calflops_metadata = load_calflops(args.calflops_source)
 
     sys.path.insert(0, str(args.wan21_root))
+    from wan.configs import WAN_CONFIGS
     from wan.modules.model import WanModel
+    from wan.modules.t5 import umt5_xxl
+    from wan.modules.vae import WanVAE
 
     device = torch.device("cuda:0")
     model = WanModel.from_pretrained(str(args.checkpoint_dir))
@@ -159,11 +164,11 @@ def main() -> None:
     wrapper = WanForwardProfile(model, patch_tokens).to(device)
     inputs = (latent, timestep, context)
 
-    full_calflops = profile_case(wrapper, inputs)
+    full_calflops = profile_case(wrapper, inputs, calculate_flops_fn)
     original_blocks = model.blocks
     model.blocks = nn.ModuleList()
     try:
-        always_on_calflops = profile_case(wrapper, inputs)
+        always_on_calflops = profile_case(wrapper, inputs, calculate_flops_fn)
     finally:
         model.blocks = original_blocks
 
@@ -188,17 +193,49 @@ def main() -> None:
     estimated_full_flops = full_calflops["flops"] + attention_correction
     estimated_always_on_flops = always_on_calflops["flops"]
 
+    config = WAN_CONFIGS["t2v-1.3B"]
+    t5_model = umt5_xxl(
+        encoder_only=True,
+        return_tokenizer=False,
+        dtype=config.t5_dtype,
+        device=device,
+    ).eval().requires_grad_(False)
+    t5_model.load_state_dict(
+        torch.load(args.checkpoint_dir / config.t5_checkpoint, map_location="cpu")
+    )
+    t5_profile = profile_t5(
+        model=t5_model,
+        text_tokens=int(config.text_len),
+        device=device,
+        calculate_flops_fn=calculate_flops_fn,
+    )
+    del t5_model
+    torch.cuda.empty_cache()
+    vae = WanVAE(
+        vae_pth=str(args.checkpoint_dir / config.vae_checkpoint),
+        device=device,
+    )
+    vae_profile = profile_vae_decode(
+        model=vae.model,
+        scale=vae.scale,
+        latent_shape=(1, model.in_dim, latent_frames, latent_height, latent_width),
+        device=device,
+        calculate_flops_fn=calculate_flops_fn,
+    )
+    component_profiles = {"t5": t5_profile, "vae_decode": vae_profile}
+
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "tool": {
             "name": "calflops",
-            "version": importlib.metadata.version("calflops"),
+            **calflops_metadata,
             "repository_evaluator": str(CALFLOPS_EVALUATION_DIR),
         },
         "scope": (
-            "Wan2.1 DiT forward-only. Calflops-observed operators plus a manual "
-            "dense FlashAttention-core correction; excludes T5, VAE, scheduler, "
-            "MP4 export, and the negligible TeaCache polynomial controller."
+            "Wan2.1 DiT forward plus separately profiled UMT5 encoder and VAE "
+            "decode. DiT uses Calflops-observed operators plus a manual dense "
+            "FlashAttention-core correction; scheduler, MP4 export, and the "
+            "TeaCache polynomial controller remain excluded."
         ),
         "counting_convention": {
             "mac_to_flop": 2,
@@ -257,9 +294,11 @@ def main() -> None:
                 estimated_full_flops - estimated_always_on_flops
             ),
         },
+        "component_profiles": component_profiles,
         "warnings": [
             "Calflops does not observe the custom FlashAttention CUDA kernel; dense attention core FLOPs are added analytically.",
-            "The TeaCache controller FLOPs are negligible relative to the DiT and are excluded.",
+            "T5 is reported for two encoder calls per video and VAE for one decode; tokenizer and scheduler FLOPs are outside these component counts.",
+            "The TeaCache controller is excluded from the DiT headline and from complete-method claims.",
             "TFLOP/s derived later is achieved estimated DiT throughput, not vendor peak throughput.",
         ],
     }

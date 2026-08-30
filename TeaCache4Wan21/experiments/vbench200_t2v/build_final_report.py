@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 
-EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
+EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -76,7 +76,7 @@ def main() -> None:
     teacache_tflops = teacache["estimated_dit_tflops_per_video"]
 
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "model": "Wan2.1-T2V-1.3B",
         "dataset": "Vbench200",
         "threshold": config["threshold"],
@@ -102,6 +102,11 @@ def main() -> None:
                 "inference_latency_seconds_p50": baseline_latency["p50"],
                 "inference_latency_seconds_p90": baseline_latency["p90"],
                 "estimated_dit_tflops_per_video_mean": baseline_tflops["mean"],
+                "t5_cuda_seconds_mean": baseline["t5_cuda_seconds"]["mean"],
+                "dit_cuda_seconds_mean": baseline["dit_forward_cuda_seconds"]["mean"],
+                "vae_decode_cuda_seconds_mean": baseline["vae_decode_cuda_seconds"]["mean"],
+                "estimated_t5_tflops_per_video": baseline["estimated_t5_tflops_per_video"],
+                "estimated_vae_decode_tflops_per_video": baseline["estimated_vae_decode_tflops_per_video"],
                 "estimated_achieved_dit_tflops_per_second": baseline[
                     "estimated_achieved_dit_tflops_per_second_ratio_of_sums"
                 ],
@@ -111,6 +116,11 @@ def main() -> None:
                 "inference_latency_seconds_p50": teacache_latency["p50"],
                 "inference_latency_seconds_p90": teacache_latency["p90"],
                 "estimated_dit_tflops_per_video_mean": teacache_tflops["mean"],
+                "t5_cuda_seconds_mean": teacache["t5_cuda_seconds"]["mean"],
+                "dit_cuda_seconds_mean": teacache["dit_forward_cuda_seconds"]["mean"],
+                "vae_decode_cuda_seconds_mean": teacache["vae_decode_cuda_seconds"]["mean"],
+                "estimated_t5_tflops_per_video": teacache["estimated_t5_tflops_per_video"],
+                "estimated_vae_decode_tflops_per_video": teacache["estimated_vae_decode_tflops_per_video"],
                 "estimated_achieved_dit_tflops_per_second": teacache[
                     "estimated_achieved_dit_tflops_per_second_ratio_of_sums"
                 ],
@@ -155,6 +165,11 @@ def main() -> None:
         "| --- | ---: | ---: |\n"
         f"| Inference latency mean (s/video) | {baseline_perf['inference_latency_seconds_mean']:.6f} | {teacache_perf['inference_latency_seconds_mean']:.6f} |\n"
         f"| Estimated DiT TFLOPs/video | {baseline_perf['estimated_dit_tflops_per_video_mean']:.6f} | {teacache_perf['estimated_dit_tflops_per_video_mean']:.6f} |\n"
+        f"| T5 CUDA time (s/video) | {baseline_perf['t5_cuda_seconds_mean']:.6f} | {teacache_perf['t5_cuda_seconds_mean']:.6f} |\n"
+        f"| DiT CUDA time (s/video) | {baseline_perf['dit_cuda_seconds_mean']:.6f} | {teacache_perf['dit_cuda_seconds_mean']:.6f} |\n"
+        f"| VAE decode CUDA time (s/video) | {baseline_perf['vae_decode_cuda_seconds_mean']:.6f} | {teacache_perf['vae_decode_cuda_seconds_mean']:.6f} |\n"
+        f"| Estimated T5 TFLOPs/video | {baseline_perf['estimated_t5_tflops_per_video']:.6f} | {teacache_perf['estimated_t5_tflops_per_video']:.6f} |\n"
+        f"| Estimated VAE decode TFLOPs/video | {baseline_perf['estimated_vae_decode_tflops_per_video']:.6f} | {teacache_perf['estimated_vae_decode_tflops_per_video']:.6f} |\n"
         f"| Estimated achieved DiT TFLOP/s | {baseline_perf['estimated_achieved_dit_tflops_per_second']:.6f} | {teacache_perf['estimated_achieved_dit_tflops_per_second']:.6f} |\n"
         f"| Vbench200 Quality | {baseline_vbench['quality_score']:.6f} | {teacache_vbench['quality_score']:.6f} |\n"
         f"| Vbench200 Semantic | {baseline_vbench['semantic_score']:.6f} | {teacache_vbench['semantic_score']:.6f} |\n"

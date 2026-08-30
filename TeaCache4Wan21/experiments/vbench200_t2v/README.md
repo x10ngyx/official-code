@@ -13,7 +13,7 @@
 | 画面 | 832×480、81 帧、16 fps |
 | 采样 | 50 步 UniPC、shift=5、CFG=5、seed=42 |
 | 精度 | DiT BF16（锁定 Wan2.1 config） |
-| 显存 | model CPU offload 开启、T5 CPU offload 开启 |
+| 显存 | 单张 48GB GPU；model、T5 与其他模型组件全部常驻 GPU，禁用任何 offload |
 | 数据集 | Vbench200，英文 prompt，每个 prompt 一个样本 |
 
 四张 GPU 按 job ordinal 模 4 静态分片。先用四卡完成 baseline，再用相同四卡完成
@@ -23,8 +23,8 @@ TeaCache，避免两个 condition 争抢同一 GPU。每条视频都通过独立
 ## 一条命令运行
 
 ```bash
-python_bin=/mnt/hdd/xiongyuxiang/tmp/data/environments/Wan2.2-conda-env/bin/python
-result_root=/mnt/hdd/xiongyuxiang/tmp/exp/teacache_wan21_vbench200_threshold_0p08
+python_bin=/path/to/Wan2.1/bin/python
+result_root=/all/yiran07-disk3/huteng_data/exp/teacache_wan21_vbench200_threshold_0p08
 
 "$python_bin" run_vbench200_4gpu.py \
   --output-dir "$result_root" \
@@ -39,7 +39,7 @@ T2V-1.3B 官方无 retention steps 的参考值为 slow `0.05`、fast `0.08`。
 若需要复现官方 retention 版本，可额外传 `--use-ret-steps`（官方 fast 参考阈值
 为 `0.10`）。正式结果目录应把阈值写进名称，避免不同配置互相覆盖。
 
-生成与 Calflops profile 默认使用已解包的 Wan2.2 Python。质量评测 Python 必须能
+生成与 Calflops profile 使用 Wan2.1 Python。质量评测 Python 必须能
 导入 `torch`、`lpips`，VBench Python 必须能导入 `torch`、`vbench`；启动器在正式
 评测前会主动检查。VBench 权重和 LPIPS cache 默认读取本工作区的
 `models/VBench/` 与 `models/torch-cache/`，也可用对应命令行参数覆盖。
@@ -63,11 +63,12 @@ timing JSON 的样本；配置或计时不完整时会失败关闭，不把不�
 
 - latency：每视频 `pipeline_generate_wall_seconds`，包含文本编码、denoising 和 VAE
   decode；不包含 pipeline/model 加载、MP4 保存及指标计算。汇报 200 条视频的 mean、
-  p50、p90、min/max 和总体分布。
+  p50、p90、min/max 和总体分布；另记录 T5、DiT、VAE decode 的 CUDA 时间与 host span。
 - TFLOPs：用 Calflops 0.3.2 对真实 832×480、81 帧 Wan DiT forward profile；对
   Calflops 看不到的 FlashAttention core 使用本仓库 `CalflopsEvaluation` 的 dense
   attention 公式补偿，再按每条视频实际 transformer block trace 累加。TFLOPs 是
-  `10^12` 浮点运算量；另以运算量除 DiT CUDA-event 时间报告估算 TFLOP/s。
+  `10^12` 浮点运算量；headline 为 DiT TFLOPs，另保存 T5 encoder 与 VAE decode
+  TFLOPs，并以 DiT 运算量除 DiT CUDA-event 时间报告估算 TFLOP/s。
 - PSNR/SSIM/LPIPS：baseline 视频作为 paired full-compute reference，使用仓库
   `VideoMetrics` 的 `rgb_full_reference_v1` 固定协议。
 - VBench score：reference 和 candidate 都计算 16 个维度；维度拆成四个 GPU shard，

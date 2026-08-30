@@ -7,12 +7,16 @@ import argparse
 import json
 import math
 import statistics
+import sys
 from pathlib import Path
 from typing import Any
 
 
-EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
+EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
 TFLOP_DIVISOR = 1_000_000_000_000
+REPOSITORY_DIR = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
+from reporting import extract_component_latency, extract_component_tflops  # noqa: E402
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -85,6 +89,7 @@ def summarize_condition(
     full_forward_flops: float,
     always_on_flops: float,
     block_count: int,
+    component_tflops: dict[str, float],
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if len(paths) != expected_count:
         raise ValueError(
@@ -133,6 +138,7 @@ def summarize_condition(
             f"{path}.model_forward_cuda_seconds",
         )
         estimated_tflops = estimated_flops / TFLOP_DIVISOR
+        component_latency = extract_component_latency(timing)
         rows.append(
             {
                 "condition": label,
@@ -140,6 +146,7 @@ def summarize_condition(
                 "timing_path": str(path),
                 "inference_latency_seconds": inference_seconds,
                 "dit_cuda_seconds": dit_cuda_seconds,
+                **component_latency,
                 "model_forward_calls": len(calls),
                 "transformer_block_executions": block_executions,
                 "full_compute_forward_calls": int(
@@ -148,6 +155,7 @@ def summarize_condition(
                 "reuse_forward_calls": int(timing.get("reuse_forward_calls", 0)),
                 "estimated_dit_flops": estimated_flops,
                 "estimated_dit_tflops": estimated_tflops,
+                **component_tflops,
                 "estimated_achieved_dit_tflops_per_second": (
                     estimated_tflops / dit_cuda_seconds
                     if dit_cuda_seconds > 0
@@ -159,6 +167,8 @@ def summarize_condition(
     inference_values = [row["inference_latency_seconds"] for row in rows]
     cuda_values = [row["dit_cuda_seconds"] for row in rows]
     tflops_values = [row["estimated_dit_tflops"] for row in rows]
+    t5_cuda_values = [row["t5_cuda_seconds"] for row in rows]
+    vae_cuda_values = [row["vae_decode_cuda_seconds"] for row in rows]
     total_tflops = sum(tflops_values)
     total_cuda_seconds = sum(cuda_values)
     summary = {
@@ -166,7 +176,15 @@ def summarize_condition(
         "video_count": len(rows),
         "end_to_end_inference_latency_seconds": summary_stats(inference_values),
         "dit_forward_cuda_seconds": summary_stats(cuda_values),
+        "t5_cuda_seconds": summary_stats(t5_cuda_values),
+        "vae_decode_cuda_seconds": summary_stats(vae_cuda_values),
         "estimated_dit_tflops_per_video": summary_stats(tflops_values),
+        "estimated_t5_tflops_per_video": component_tflops[
+            "estimated_t5_tflops_per_video"
+        ],
+        "estimated_vae_decode_tflops_per_video": component_tflops[
+            "estimated_vae_decode_tflops_per_video"
+        ],
         "estimated_dit_total_tflops": total_tflops,
         "estimated_achieved_dit_tflops_per_second_ratio_of_sums": (
             total_tflops / total_cuda_seconds if total_cuda_seconds > 0 else None
@@ -222,6 +240,7 @@ def main() -> None:
     block_count = int(profile.get("input", {}).get("transformer_blocks", 0))
     if block_count < 1:
         raise ValueError("invalid transformer block count in Calflops profile")
+    component_tflops = extract_component_tflops(profile)
 
     baseline_paths = timing_paths(args.baseline_dir)
     teacache_paths = timing_paths(args.teacache_dir)
@@ -241,6 +260,7 @@ def main() -> None:
         full_forward_flops=full_forward_flops,
         always_on_flops=always_on_flops,
         block_count=block_count,
+        component_tflops=component_tflops,
     )
     teacache_summary, teacache_rows = summarize_condition(
         label="teacache",
@@ -250,13 +270,14 @@ def main() -> None:
         full_forward_flops=full_forward_flops,
         always_on_flops=always_on_flops,
         block_count=block_count,
+        component_tflops=component_tflops,
     )
     baseline_latency = baseline_summary["end_to_end_inference_latency_seconds"]["mean"]
     teacache_latency = teacache_summary["end_to_end_inference_latency_seconds"]["mean"]
     baseline_tflops = baseline_summary["estimated_dit_total_tflops"]
     teacache_tflops = teacache_summary["estimated_dit_total_tflops"]
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "protocol": {
             "model": "Wan2.1-T2V-1.3B",
             "video": {"width": 832, "height": 480, "frames": 81, "fps": 16},
@@ -268,7 +289,7 @@ def main() -> None:
                 "seed": 42,
             },
             "precision": "DiT bfloat16",
-            "memory": "model and T5 CPU offload enabled",
+            "memory": "single 48GB GPU; model and T5 remain resident; no offload",
         },
         "latency_definition": {
             "headline_field": "pipeline_generate_wall_seconds",
@@ -304,7 +325,7 @@ def main() -> None:
         },
         "warnings": [
             "TFLOPs denotes 10^12 floating-point operations, while TFLOP/s denotes achieved estimated DiT throughput.",
-            "Calflops counts the DiT forward path only; end-to-end latency additionally includes text encoding and VAE decode.",
+            "DiT remains the headline TFLOPs metric; T5 and VAE decode TFLOPs are recorded separately in every condition.",
             "The four generation workers improve dataset makespan but do not change the per-video latency definition.",
         ],
     }

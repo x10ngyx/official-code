@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 import traceback
@@ -22,12 +23,12 @@ for variable in (
     "MKL_NUM_THREADS",
     "NUMEXPR_NUM_THREADS",
 ):
-    os.environ.setdefault(variable, "1")
+    os.environ[variable] = "1"
 
 EXPERIMENT_DIR = Path(__file__).resolve().parent
-WORK_ROOT = EXPERIMENT_DIR.parents[3]
-DEFAULT_WAN_REPO = WORK_ROOT / "Wan2.2"
-DEFAULT_CKPT_DIR = WORK_ROOT.parent / "models" / "Wan2.2-T2V-A14B"
+PROJECT_ROOT = EXPERIMENT_DIR.parents[1]
+DEFAULT_WAN_REPO = Path(os.environ["WAN22_SOURCE"]) if os.environ.get("WAN22_SOURCE") else None
+DEFAULT_CKPT_DIR = Path(os.environ["WAN22_CKPT"]) if os.environ.get("WAN22_CKPT") else None
 
 
 def parse_args() -> argparse.Namespace:
@@ -334,12 +335,32 @@ def main() -> None:
     sample_dir.mkdir(parents=True, exist_ok=True)
     failure_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.wan_repo is None or args.ckpt_dir is None:
+        raise ValueError(
+            "Set WAN22_SOURCE and WAN22_CKPT or pass --wan-repo and --ckpt-dir."
+        )
     wan_repo = args.wan_repo.resolve()
     ckpt_dir = args.ckpt_dir.resolve()
     if not (wan_repo / "wan" / "text2video.py").is_file():
         raise FileNotFoundError(f"Invalid Wan2.2 repository: {wan_repo}")
     if not ckpt_dir.is_dir():
         raise FileNotFoundError(f"Invalid checkpoint directory: {ckpt_dir}")
+    validation_mode = (
+        "prepared"
+        if (wan_repo / ".teacache4wan22_prepared.json").is_file()
+        else "upstream"
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "validate_prepared_tree.py"),
+            "--source",
+            str(wan_repo),
+            "--mode",
+            validation_mode,
+        ],
+        check=True,
+    )
     sys.path.insert(0, str(wan_repo))
 
     import torch
@@ -449,10 +470,6 @@ def main() -> None:
                         guide_scale=(3.0, 4.0),
                         seed=args.seed,
                         offload_model=True,
-                        timestep_cache_config=None,
-                        block_cache_config=None,
-                        block_group_cache_config=None,
-                        cfg_cache_config=None,
                     )
                     wall_seconds = time.perf_counter() - started
                     records, stat_elapsed = observer.finish_prompt()

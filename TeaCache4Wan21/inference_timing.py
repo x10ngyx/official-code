@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from contextlib import contextmanager
 from functools import wraps
@@ -11,6 +12,10 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import torch
+
+REPOSITORY_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
+from component_timing import ComponentTimer  # noqa: E402
 
 
 class _PipelineProfiler:
@@ -42,6 +47,7 @@ class _PipelineProfiler:
             and torch.device(device).type == "cuda"
             else None
         )
+        self.component_timer = ComponentTimer(pipeline, self.cuda_device)
 
     def _synchronize(self) -> None:
         if self.cuda_device is not None:
@@ -53,6 +59,7 @@ class _PipelineProfiler:
         return torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
 
     def install(self) -> None:
+        self.component_timer.install()
         for block in self.blocks:
             original = block.forward
             self._original_block_forwards.append(original)
@@ -107,6 +114,7 @@ class _PipelineProfiler:
                 self._synchronize()
                 generate_wall_seconds = time.perf_counter() - started
                 self._finalize_calls()
+                self.component_timer.finalize()
                 self._restore()
                 self._write(
                     status=status,
@@ -129,6 +137,7 @@ class _PipelineProfiler:
             record["reuse"] = record["blocks_executed"] == 0
 
     def _restore(self) -> None:
+        self.component_timer.restore()
         self.model.forward = self._original_model_forward
         self.pipeline.generate = self._original_generate
         for block, original in zip(self.blocks, self._original_block_forwards):
@@ -146,8 +155,9 @@ class _PipelineProfiler:
             for record in self.calls
             if record["cuda_seconds"] is not None
         ]
+        component_latency = self.component_timer.summary()
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": status,
             "implementation": self.implementation,
             "latency_scope": {
@@ -160,6 +170,10 @@ class _PipelineProfiler:
                 "model_forward_cuda_seconds": (
                     "sum of CUDA-event spans for all Wan DiT forward calls"
                 ),
+                "t5_cuda_seconds": "sum of CUDA-event spans for T5 encoder calls",
+                "vae_decode_cuda_seconds": (
+                    "sum of CUDA-event spans for VAE decode calls"
+                ),
             },
             "cuda_device": str(self.cuda_device) if self.cuda_device is not None else None,
             "cuda_device_name": (
@@ -171,6 +185,20 @@ class _PipelineProfiler:
             "pipeline_generate_wall_seconds": generate_wall_seconds,
             "model_forward_call_count": len(self.calls),
             "model_forward_cuda_seconds": sum(cuda_values) if cuda_values else None,
+            "dit_cuda_seconds": sum(cuda_values) if cuda_values else None,
+            "t5_cuda_seconds": component_latency["t5"]["cuda_seconds"],
+            "vae_decode_cuda_seconds": component_latency["vae_decode"]["cuda_seconds"],
+            "component_latency": {
+                "t5": component_latency["t5"],
+                "dit": {
+                    "call_count": len(self.calls),
+                    "cuda_seconds": sum(cuda_values) if cuda_values else None,
+                    "host_span_seconds": sum(
+                        float(record["host_span_seconds"]) for record in self.calls
+                    ),
+                },
+                "vae_decode": component_latency["vae_decode"],
+            },
             "model_forward_host_span_seconds": sum(
                 float(record["host_span_seconds"]) for record in self.calls
             ),

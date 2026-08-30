@@ -1,0 +1,46 @@
+{
+  "wan22": {
+    "repository": "https://github.com/Wan-Video/Wan2.2.git",
+    "commit": "42bf4cfaa384bc21833865abc2f9e6c0e67233dc",
+    "license": "Apache-2.0",
+    "original_file_sha256": {
+      "generate.py": "cae024b99a3d105fe273a8dfe724ea656f9c1a876ccc8534a8c2fbfb716950e7",
+      "wan/text2video.py": "2f212e1f6d7ba4408a25998091b70ee35dde8bcaaeaedd3ba03d6cdab84dc683",
+      "wan/modules/model.py": "8b39115298ca7322806c19b3165b3f435a94fe4a58f0624aec24f8e7f4997432",
+      "wan/__init__.py": "ab6b0151f3b0eca9fec83b38ed5ac0052023d41ad2f238a7f0d6f165b1f48885"
+    },
+    "approved_calibration_source_sha256": {
+      "upstream": {
+        "wan/modules/model.py": "8b39115298ca7322806c19b3165b3f435a94fe4a58f0624aec24f8e7f4997432",
+        "wan/text2video.py": "2f212e1f6d7ba4408a25998091b70ee35dde8bcaaeaedd3ba03d6cdab84dc683"
+      },
+      "prepared": {
+        "wan/modules/model.py": "4360b0bd5852565d1fbd13dbf0225918148bb208abb696be40e599de99f36415",
+        "wan/text2video.py": "9559674a6789861d10abcf13244596c7cce50f6a7a60e1f75946d1cb038a8e92"
+      },
+      "prepared_wan21_timing": {
+        "wan/modules/model.py": "4360b0bd5852565d1fbd13dbf0225918148bb208abb696be40e599de99f36415",
+        "wan/text2video.py": "aeb4b11a2fa07e185fe509f63692daf786cb3f189f44256ceec1f9612b2efa52"
+      }
+    }
+  },
+  "teacache": {
+    "repository": "https://github.com/ali-vilab/TeaCache.git",
+    "commit": "7c10efc4702c6b619f47805f7abe4a7a08085aa0",
+    "license": "Apache-2.0",
+    "reference_path": "TeaCache4Wan2.1/teacache_generate.py",
+    "reference_sha256": "97af76136337869152f3d6fe9e049cadc2c480740c492749fcd5efa80d9bf7ee"
+  },
+  "t2v_compbench": {
+    "repository": "https://github.com/KaiyueSun98/T2V-CompBench.git",
+    "commit": "4fa8be2c46d49796a16678c245ea16e3f12bc4c1",
+    "use": "70-prompt stratified polynomial calibration"
+  },
+  "integration_artifacts": {
+    "patch_sha256": "c45c90d382c8b6ee9e0b78b814dc905d69adab2ad26236fb3b0bab0d1b111aaf",
+    "runtime_sha256": "66e3284a640a75e09af9194320f8041a1a97b5aab896b1d8c25ceb353f139583",
+    "timing_runtime_sha256": "85fb37dd481a15e596a4752b2a4ff8fffd05e2dd4410214dd5b1be8bf26db78f",
+    "protocol_sha256": "9898f731e21aa3ac1bf7b0b6b1c0a3978354f1d1b5bd1ab8ef4569e453bc46b0",
+    "coefficient_sha256": "8b9550f7bd190aafcfac7871bb12d387fbfb4f6afe61e285d08a5b641b0c2970"
+  }
+}

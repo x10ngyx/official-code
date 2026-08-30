@@ -41,7 +41,7 @@ def main() -> None:
     device = torch.cuda.current_device() if torch.cuda.is_available() else None
     payload = {
         "schema_version": 1,
-        "purpose": "Wan2.2 conda compatibility and TeaCache threshold=0 equivalence smoke test",
+        "purpose": "Wan2.1 fixed-protocol TeaCache threshold=0 equivalence smoke test",
         "python": sys.version,
         "platform": platform.platform(),
         "torch": torch.__version__,
@@ -63,14 +63,14 @@ def main() -> None:
         "configuration": {
             "task": "t2v-1.3B",
             "size": "832*480",
-            "frame_num": 5,
+            "frame_num": 81,
             "sample_solver": "unipc",
-            "sample_steps": 4,
+            "sample_steps": 50,
             "sample_shift": 5.0,
             "sample_guide_scale": 5.0,
             "base_seed": 42,
-            "offload_model": True,
-            "t5_cpu": True,
+            "offload_model": False,
+            "t5_cpu": False,
             "teacache_threshold": 0.0,
             "use_ret_steps": False,
             "prompt": args.prompt,

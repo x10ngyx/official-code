@@ -1,0 +1,17 @@
+{
+  "schema": "seacache4wan22_protocol_v1",
+  "task": "t2v-A14B",
+  "size_wh": [832, 480],
+  "frame_num": 45,
+  "fps": 16,
+  "sampling_steps": 50,
+  "sample_solver": "dpm++",
+  "shift": 12.0,
+  "guide_scale_low_high": [3.0, 4.0],
+  "boundary": 0.875,
+  "seed": 42,
+  "param_dtype": "torch.bfloat16",
+  "offload_model": true,
+  "t5_cpu": false,
+  "distributed": false
+}

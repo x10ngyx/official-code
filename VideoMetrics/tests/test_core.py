@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 import os
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 for variable in (
     "OPENBLAS_NUM_THREADS",
@@ -16,6 +18,7 @@ import cv2
 import numpy as np
 
 from video_metrics.core import psnr_per_frame, ssim_per_frame, validate_pair
+from video_metrics.evaluator import VideoPair, evaluate_pairs
 
 
 def upstream_psnr(reference: np.ndarray, candidate: np.ndarray) -> float:
@@ -103,6 +106,42 @@ class CoreMetricTest(unittest.TestCase):
     def test_shape_mismatch_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "identical"):
             validate_pair(self.reference, self.candidate[:, :, :, :-1])
+
+    def test_evaluator_reuses_supplied_lpips_computer(self) -> None:
+        class DummyLPIPSComputer:
+            device = "cpu"
+            batch_size = 4
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def per_frame(
+                self, reference: np.ndarray, candidate: np.ndarray
+            ) -> np.ndarray:
+                self.calls += 1
+                return np.zeros(reference.shape[0], dtype=np.float64)
+
+        video = np.zeros((2, 3, 16, 16), dtype=np.float32)
+        lpips_computer = DummyLPIPSComputer()
+        pair = VideoPair("sample", Path("reference.mp4"), Path("candidate.mp4"))
+        with (
+            patch(
+                "video_metrics.evaluator.decode_video_rgb",
+                side_effect=(video, video.copy()),
+            ),
+            patch("video_metrics.evaluator.sha256_file", return_value="0" * 64),
+        ):
+            frame_rows, video_rows, summary = evaluate_pairs(
+                [pair],
+                expected_frames=2,
+                lpips_computer=lpips_computer,  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(lpips_computer.calls, 1)
+        self.assertEqual(len(frame_rows), 2)
+        self.assertEqual(len(video_rows), 1)
+        self.assertEqual(summary["lpips_device"], "cpu")
+        self.assertEqual(summary["lpips_batch_size"], 4)
 
 
 if __name__ == "__main__":

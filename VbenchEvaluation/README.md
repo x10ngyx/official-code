@@ -13,9 +13,10 @@ VBench officially exposes two relevant modes:
 - `vbench_standard` supports all 16 dimensions using the prompt metadata in a
   full-info JSON file. It expects video filenames of the form
   `<original prompt>-0.mp4` through `<original prompt>-4.mp4`.
-- `custom_input` accepts arbitrary filenames/prompts, but officially supports
-  only subject consistency, background consistency, motion smoothness,
-  dynamic degree, aesthetic quality, and imaging quality.
+- `custom_input` accepts arbitrary filenames/prompts and, in the locked
+  implementation, supports ten dimensions; the six dimensions requiring
+  benchmark-specific auxiliary labels (object class, multiple objects, scene,
+  appearance style, color, and spatial relationship) are excluded.
 
 This package uses standard mode with `VBench200_full_info.json`. The staging
 script maps open-source-friendly IDs such as `vbench200_001.mp4` to the
@@ -31,10 +32,17 @@ unique prompts are evaluated.
 
 - `prepare_videos.py`: validates ID-named outputs and creates prompt-named
   symlinks for standard mode.
+- `build_subset_full_info.py`: when `--allow-missing` is requested, filters
+  full-info metadata to exactly the staged prompts and rejects subsets that do
+  not cover all 16 dimensions. This prevents official VBench from receiving
+  empty video lists for the other Vbench200 prompts.
 - `evaluate_vbench.py`: runs selected or all 16 official metric dimensions.
 - `aggregate_vbench_scores.py`: applies the official normalization ranges,
   dimension weights, and 4:1 Quality/Semantic aggregation.
 - `run_vbench200.sh`: end-to-end one-command wrapper.
+- `run_custom_vbench.sh`: arbitrary-prompt runner for the ten dimensions
+  supported by VBench `custom_input`; its `vbench_score` is an explicitly
+  local raw-score mean because upstream defines no official custom aggregate.
 - `dimensions.json`: auditable score constants pinned to the official source.
 - `upstream_lock.json`: VBench commit, version, license, and source hashes.
 - `model_resources.json`: metric checkpoint URLs, target cache paths, and
@@ -136,11 +144,15 @@ bash run_vbench200.sh \
 ```
 
 The last argument is the expected number of videos per prompt (`1` to `5`).
+For a deliberately selected Vbench200 subset, append `--allow-missing`; the
+selected records must still cover all 16 dimensions before aggregate scoring
+is valid.
 The working directory will contain:
 
 ```text
 staged_videos/                  # symlinks only
 staging_manifest.json           # exact ID/prompt/source mapping
+subset_full_info.json            # present for deliberate partial subsets
 scores/                          # per-dimension official VBench JSON files
 vbench200_aggregate_scores.json # raw, normalized, and aggregate subset scores
 ```
