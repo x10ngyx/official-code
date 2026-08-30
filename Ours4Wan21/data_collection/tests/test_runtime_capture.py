@@ -76,6 +76,60 @@ class RuntimeCaptureTests(unittest.TestCase):
             )
             self.assertEqual(len(list((root / "latents").iterdir())), 50)
 
+    def test_fixed_seacache_trace_uses_the_same_lossless_branch_capture(self) -> None:
+        controller = RandomThresholdSeaCacheController(
+            RandomThresholdConfig(tuple([0.3] * 50))
+        )
+        feature = torch.ones((1, 1, 1))
+        grid = torch.tensor([1, 1, 1])
+        residual = torch.ones((1, 1, 1))
+        for step in range(50):
+            for branch_index, branch in enumerate(BRANCHES):
+                current = feature * (1.0 + 0.01 * step * (branch_index + 1))
+                reuse = controller.plan_step(
+                    branch=branch,
+                    step_index=step,
+                    num_steps=50,
+                    feature=current,
+                    grid_size=grid,
+                )
+                if reuse:
+                    controller.reuse_residual(branch, step)
+                else:
+                    controller.record_recompute(branch, step, residual)
+        trace = controller.summary()
+        trace.update({
+            "schema": "ours4wan21_seacache_fixed_threshold_trace_v1",
+            "gate_mode": (
+                "seacache_aligned_independent_cfg_branches_filtered_boundary_fixed_threshold"
+            ),
+            "policy_family": "fixed_seacache_threshold",
+            "fixed_threshold": 0.3,
+        })
+        capture = RuntimeCapture(mode="candidate")
+        capture.reset(
+            "trajectory",
+            {"trajectory_id": "trajectory", "policy_family": "fixed_seacache_threshold"},
+        )
+        capture.latents = [torch.full((1, 1, 1, 1), float(step)) for step in range(50)]
+        capture.step_metadata = [
+            {
+                "step_index": step,
+                "step_fraction": step / 49.0,
+                "timestep": float(50 - step),
+                "sigma": 1.0 - step / 50.0,
+                "model_stage": "single",
+            }
+            for step in range(50)
+        ]
+        capture.trace_payload = trace
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            payload = capture.save_artifacts(root / "trace.json", root / "latents")
+            self.assertEqual(payload["schema"], "ours4wan21_seacache_fixed_threshold_trace_v1")
+            self.assertEqual(len(payload["decisions"]), 100)
+            self.assertEqual(len(payload["step_records"]), 50)
+
 
 if __name__ == "__main__":
     unittest.main()

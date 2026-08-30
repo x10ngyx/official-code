@@ -73,7 +73,10 @@ class RuntimeCapture:
             })
         decisions = list(self.trace_payload["decisions"])
         steps = []
-        if self.trace_payload.get("schema") == "ours4wan21_random_threshold_trace_v2":
+        if self.trace_payload.get("schema") in {
+            "ours4wan21_random_threshold_trace_v2",
+            "ours4wan21_seacache_fixed_threshold_trace_v1",
+        }:
             if len(decisions) != 2 * NUM_STEPS:
                 raise RuntimeError("candidate trace must contain 100 ordered branch decisions")
             for index in range(NUM_STEPS):
@@ -204,6 +207,22 @@ class Wan21DataRuntime:
             if self.controller is None:
                 raise RuntimeError("candidate controller was not configured")
             payload = self.controller.summary()
+            policy_family = self.capture.manifest_record.get("policy_family")
+            payload["policy_family"] = policy_family
+            if policy_family == "fixed_seacache_threshold":
+                fixed_threshold = float(self.capture.manifest_record["fixed_threshold"])
+                if any(
+                    not math.isclose(float(value), fixed_threshold, rel_tol=0.0, abs_tol=0.0)
+                    for value in payload["threshold_path"]
+                ):
+                    raise RuntimeError("fixed SeaCache trace contains a non-constant threshold path")
+                payload.update({
+                    "schema": "ours4wan21_seacache_fixed_threshold_trace_v1",
+                    "gate_mode": (
+                        "seacache_aligned_independent_cfg_branches_filtered_boundary_fixed_threshold"
+                    ),
+                    "fixed_threshold": fixed_threshold,
+                })
         else:
             decisions = [
                 {

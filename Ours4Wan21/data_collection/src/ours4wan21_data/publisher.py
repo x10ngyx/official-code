@@ -18,8 +18,9 @@ from .manifest import (
     NUM_CANDIDATES,
     NUM_STEPS,
     SCHEMA_CANDIDATE_COMPLETE,
+    manifest_contract,
     read_jsonl,
-    validate_runnable,
+    validate_candidate_manifest,
 )
 from .metrics import load_metric_artifacts, metric_paths
 from .paths import require_result_path
@@ -42,8 +43,9 @@ def candidate_paths(parent: Path, shard: int, trajectory_id: str) -> dict[str, P
 
 TRAJECTORY_FIELDS = (
     "release_index", "trajectory_id", "sample_id", "prompt_rank", "split",
-    "candidate_index_for_prompt", "shard_index", "target_speedup", "q",
-    "mean_threshold", "threshold_min", "threshold_max", "action_count_unit",
+    "candidate_index_for_prompt", "shard_index", "policy_family",
+    "target_speedup", "q", "fixed_threshold", "mean_threshold",
+    "threshold_min", "threshold_max", "action_count_unit",
     "actual_reuse", "actual_recompute", "actual_reuse_branch_calls",
     "actual_recompute_branch_calls", "cond_reuse_branch_calls",
     "cond_recompute_branch_calls", "uncond_reuse_branch_calls",
@@ -72,11 +74,14 @@ TRAJECTORY_FIELDS = (
     "latent_dir", "timing_scope",
     "speedup_definition", "flops_speedup_definition", "calibration_file",
     "calibration_sha256", "calibration_fit_source", "calibration_fit_source_sha256",
+    "threshold_grid", "threshold_grid_config", "threshold_grid_config_sha256",
+    "threshold_selection_seed", "threshold_selection_distribution",
 )
 STEP_FIELDS = (
     "release_index", "trajectory_id", "sample_id", "prompt_rank", "split",
-    "candidate_index_for_prompt", "shard_index", "target_speedup", "q",
-    "mean_threshold", "step_index", "step_fraction", "timestep", "sigma",
+    "candidate_index_for_prompt", "shard_index", "policy_family",
+    "target_speedup", "q", "fixed_threshold", "mean_threshold",
+    "step_index", "step_fraction", "timestep", "sigma",
     "model_stage", "requested_threshold", "action", "reason", "branches",
     "cond_action", "uncond_action", "filtered_relative_l1",
     "cond_filtered_relative_l1", "uncond_filtered_relative_l1",
@@ -94,8 +99,9 @@ STEP_FIELDS = (
 )
 BRANCH_FIELDS = (
     "release_index", "trajectory_id", "sample_id", "prompt_rank", "split",
-    "candidate_index_for_prompt", "shard_index", "target_speedup", "q",
-    "mean_threshold", "call_index", "step_index", "branch", "step_fraction",
+    "candidate_index_for_prompt", "shard_index", "policy_family",
+    "target_speedup", "q", "fixed_threshold", "mean_threshold",
+    "call_index", "step_index", "branch", "step_fraction",
     "timestep", "sigma", "model_stage", "requested_threshold", "action", "reason",
     "filtered_relative_l1", "accumulated_distance_before",
     "accumulated_distance_with_current", "accumulated_distance_after",
@@ -200,7 +206,12 @@ def numeric_summary(values: Iterable[Any]) -> dict[str, float | int | None]:
 
 
 def write_snapshot(
-    rows: list[dict[str, Any]], parent: Path, destination: Path, manifest: Path
+    rows: list[dict[str, Any]],
+    parent: Path,
+    destination: Path,
+    manifest: Path,
+    *,
+    expected_candidate_count: int = NUM_CANDIDATES,
 ) -> dict[str, Any]:
     destination.mkdir(parents=True)
     tables = destination / "tables"
@@ -250,11 +261,12 @@ def write_snapshot(
         "published_candidate_count": len(rows),
         "published_step_count": len(rows) * NUM_STEPS,
         "published_branch_transition_count": len(rows) * 2 * NUM_STEPS,
-        "complete": len(rows) == NUM_CANDIDATES,
+        "complete": len(rows) == expected_candidate_count,
         "distributions": {
             key: numeric_summary(item.get(key) for item in trajectory_rows)
             for key in (
-                "target_speedup", "q", "mean_threshold", "inference_latency_speedup",
+                "target_speedup", "q", "fixed_threshold", "mean_threshold",
+                "inference_latency_speedup",
                 "baseline_inference_seconds", "candidate_inference_seconds",
                 "baseline_estimated_dit_tflops", "candidate_estimated_dit_tflops",
                 "dit_flops_speedup", "baseline_t5_cuda_seconds",
@@ -280,15 +292,20 @@ def publish(manifest: Path, parent: Path, *, require_complete: bool = False) -> 
     manifest = manifest.expanduser().resolve(strict=True)
     parent = require_result_path(parent)
     rows = read_jsonl(manifest)
-    validate_runnable(rows)
+    validate_candidate_manifest(rows)
+    contract = manifest_contract(rows)
+    expected_candidate_count = int(contract["candidate_count"])
     published_root = parent / "published"
     published_root.mkdir(parents=True, exist_ok=True)
     lock_path = published_root / ".publish.lock"
     with lock_path.open("a+", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         prefix = completed_prefix(rows, parent)
-        if require_complete and prefix != NUM_CANDIDATES:
-            raise RuntimeError(f"complete publication requires 9000 candidates; prefix={prefix}")
+        if require_complete and prefix != expected_candidate_count:
+            raise RuntimeError(
+                "complete publication requires "
+                f"{expected_candidate_count} candidates; prefix={prefix}"
+            )
         snapshots = published_root / "snapshots"
         snapshots.mkdir(exist_ok=True)
         destination = snapshots / f"prefix_{prefix:09d}"
@@ -312,7 +329,13 @@ def publish(manifest: Path, parent: Path, *, require_complete: bool = False) -> 
             if temporary.exists():
                 shutil.rmtree(temporary)
             try:
-                summary = write_snapshot(rows[:prefix], parent, temporary, manifest)
+                summary = write_snapshot(
+                    rows[:prefix],
+                    parent,
+                    temporary,
+                    manifest,
+                    expected_candidate_count=expected_candidate_count,
+                )
                 os.replace(temporary, destination)
             except BaseException:
                 if temporary.exists():
@@ -324,7 +347,7 @@ def publish(manifest: Path, parent: Path, *, require_complete: bool = False) -> 
             "published_candidate_count": prefix,
             "published_step_count": prefix * NUM_STEPS,
             "published_branch_transition_count": prefix * 2 * NUM_STEPS,
-            "complete": prefix == NUM_CANDIDATES,
+            "complete": prefix == expected_candidate_count,
             "summary_sha256": sha256(destination / "SUMMARY.json"),
         }
         atomic_json(published_root / "CURRENT.json", current)

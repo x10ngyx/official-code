@@ -2,7 +2,8 @@
 
 Wan2.1-T2V-1.3B experiments for the learned cache controller.  The first
 implemented subproject is `data_collection/`, which builds randomized
-per-step SeaCache-threshold behavior trajectories for offline training.
+per-step SeaCache-threshold behavior trajectories for offline training and a
+matched fixed-threshold SeaCache dataset from the same OpenVid prompt pool.
 
 Large generated artifacts must live below
 `/all/yiran07-disk3/huteng_data/exp`; `experiment_results/` contains only

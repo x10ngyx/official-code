@@ -24,9 +24,27 @@ class StaticContractTests(unittest.TestCase):
         self.assertNotIn('process_wall_seconds', source)
 
     def test_launcher_sets_all_thread_limits(self) -> None:
-        source = (DATA_PROJECT / "experiments/random_threshold_collection_v1/launch_4gpu.sh").read_text(encoding="utf-8")
-        for key in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
-            self.assertIn(f"export {key}=1", source)
+        launchers = (
+            DATA_PROJECT / "experiments/random_threshold_collection_v1/launch_4gpu.sh",
+            DATA_PROJECT / "experiments/seacache_threshold_collection_v1/launch_4gpu.sh",
+        )
+        for launcher in launchers:
+            source = launcher.read_text(encoding="utf-8")
+            for key in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+                self.assertIn(f"export {key}=1", source)
+
+    def test_seacache_grid_matches_frozen_wan22_list(self) -> None:
+        payload = json.loads(
+            (DATA_PROJECT / "configs/seacache_thresholds.wan22_v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            payload["thresholds"],
+            [0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, 0.60, 0.70],
+        )
+        self.assertEqual(payload["thresholds_per_prompt"], 3)
+        self.assertTrue(payload["sampling_without_replacement"])
 
     def test_filtered_distance_is_collected_and_published_per_cfg_branch(self) -> None:
         controller = (DATA_PROJECT / "src/ours4wan21_data/controller.py").read_text(encoding="utf-8")

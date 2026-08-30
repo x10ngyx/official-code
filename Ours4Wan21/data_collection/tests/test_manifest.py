@@ -15,18 +15,26 @@ sys.path.insert(0, str(DATA_PROJECT / "src"))
 from ours4wan21_data.manifest import (  # noqa: E402
     MAPPING_SCHEMA,
     PROTOCOL,
+    SEACACHE_THRESHOLDS,
+    build_seacache_manifest,
     build_plan,
+    manifest_contract,
     materialize,
+    validate_candidate_manifest,
     validate_plan,
     validate_runnable,
+    validate_seacache_manifest,
     write_jsonl,
 )
+from ours4wan21_data.collector import selected_rows, unique_prompt_rows  # noqa: E402
 
 
 PROMPT_POOL = DATA_PROJECT / "resources/prompts/openvidhd_balanced_5000.upstream.jsonl"
 PENDING = DATA_PROJECT / "configs/speed_threshold_mapping.pending.json"
+SEACACHE_CONFIG = DATA_PROJECT / "configs/seacache_thresholds.wan22_v1.json"
 PROMPT_POOL_SHA256 = "fb5d5d73f86b84d10d8e55154b789ac8549c74e90f33c1d4d2a02d67a5cde3e5"
 SELECTED_ID_SHA256 = "4316be6b8be97af36221bb521e674814d6385a13e5d7936b4cc4769c772e4805"
+SEACACHE_SELECTED_ID_SHA256 = "cd1ce588907a238867106dca8de91baea66e848c77172768aa93e41a51b52645"
 
 
 class ManifestContractTests(unittest.TestCase):
@@ -94,6 +102,65 @@ class ManifestContractTests(unittest.TestCase):
             self.assertTrue(summary["candidate_runnable"])
             self.assertTrue(all(len(row["threshold_path"]) == 50 for row in runnable))
             self.assertTrue(all(0.01 <= min(row["threshold_path"]) <= max(row["threshold_path"]) <= 0.20 for row in runnable))
+
+
+class SeaCacheManifestContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.rows, cls.summary = build_seacache_manifest(PROMPT_POOL, SEACACHE_CONFIG)
+
+    def test_counts_splits_shards_and_fixed_paths(self) -> None:
+        validate_seacache_manifest(self.rows)
+        validate_candidate_manifest(self.rows)
+        self.assertEqual(len(self.rows), 3000)
+        self.assertEqual(len({row["sample_id"] for row in self.rows}), 1000)
+        self.assertEqual(
+            Counter(row["shard_index"] for row in self.rows),
+            Counter({0: 750, 1: 750, 2: 750, 3: 750}),
+        )
+        self.assertEqual(
+            Counter(row["split"] for row in self.rows),
+            Counter(train=2400, val=300, test=300),
+        )
+        self.assertTrue(self.summary["candidate_runnable"])
+        self.assertEqual(tuple(self.summary["thresholds"]), SEACACHE_THRESHOLDS)
+        for prompt_rank in range(1000):
+            group = self.rows[prompt_rank * 3:prompt_rank * 3 + 3]
+            thresholds = [row["fixed_threshold"] for row in group]
+            self.assertEqual(len(set(thresholds)), 3)
+            for row in group:
+                self.assertEqual(row["threshold_path"], [row["fixed_threshold"]] * 50)
+                self.assertIsNone(row["target_speedup"])
+                self.assertIsNone(row["q"])
+
+    def test_deterministic_prompt_selection(self) -> None:
+        repeated, repeated_summary = build_seacache_manifest(PROMPT_POOL, SEACACHE_CONFIG)
+        self.assertEqual(repeated, self.rows)
+        self.assertEqual(repeated_summary, self.summary)
+        selected = [self.rows[index * 3]["sample_id"] for index in range(1000)]
+        digest = hashlib.sha256(("\n".join(selected) + "\n").encode()).hexdigest()
+        self.assertEqual(digest, SEACACHE_SELECTED_ID_SHA256)
+
+    def test_generic_manifest_contract_uses_seacache_counts(self) -> None:
+        contract = manifest_contract(self.rows)
+        self.assertEqual(contract["selected_prompt_count"], 1000)
+        self.assertEqual(contract["candidate_count"], 3000)
+        self.assertEqual(contract["baselines_per_shard"], 250)
+        self.assertEqual(contract["candidates_per_shard"], 750)
+        self.assertEqual(len(unique_prompt_rows(self.rows)), 1000)
+        for shard in range(4):
+            self.assertEqual(len(selected_rows(self.rows, "baseline", shard)), 250)
+            self.assertEqual(len(selected_rows(self.rows, "candidate", shard)), 750)
+
+    def test_duplicate_threshold_tampering_is_rejected(self) -> None:
+        tampered = [dict(row) for row in self.rows]
+        tampered[1]["fixed_threshold"] = tampered[0]["fixed_threshold"]
+        tampered[1]["mean_threshold"] = tampered[0]["mean_threshold"]
+        tampered[1]["threshold_min"] = tampered[0]["threshold_min"]
+        tampered[1]["threshold_max"] = tampered[0]["threshold_max"]
+        tampered[1]["threshold_path"] = list(tampered[0]["threshold_path"])
+        with self.assertRaisesRegex(ValueError, "reproducible/distinct"):
+            validate_seacache_manifest(tampered)
 
 
 if __name__ == "__main__":

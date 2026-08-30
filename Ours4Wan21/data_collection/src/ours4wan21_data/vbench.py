@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .collector import all_baselines_complete, baseline_paths, unique_prompt_rows
-from .manifest import NUM_CANDIDATES, read_jsonl, validate_runnable
+from .manifest import manifest_contract, read_jsonl, validate_candidate_manifest
 from .paths import require_result_path
 from .publisher import candidate_paths, load_completion
 
@@ -79,12 +79,17 @@ def evaluate(
     vbench_python = vbench_python.expanduser().resolve(strict=True)
     vbench_cache = vbench_cache.expanduser().resolve(strict=True)
     rows = read_jsonl(manifest)
-    validate_runnable(rows)
+    validate_candidate_manifest(rows)
+    expected_candidate_count = int(manifest_contract(rows)["candidate_count"])
     ready, missing = all_baselines_complete(rows, parent)
     if not ready:
         raise RuntimeError(f"VBench requires all baselines; missing={len(missing)}")
-    if len(rows) != NUM_CANDIDATES or any(load_completion(parent, row) is None for row in rows):
-        raise RuntimeError("VBench requires all 9000 completed candidates")
+    if len(rows) != expected_candidate_count or any(
+        load_completion(parent, row) is None for row in rows
+    ):
+        raise RuntimeError(
+            f"VBench requires all {expected_candidate_count} completed candidates"
+        )
 
     quality_root = parent / "quality"
     comparison_path = quality_root / "vbench_summary.json"

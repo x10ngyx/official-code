@@ -26,8 +26,9 @@ The following large or environment-specific inputs remain external:
 3. The `Wan2.1-T2V-1.3B` checkpoint directory.
 4. A writable external result root. It defaults to
    `/all/yiran07-disk3/huteng_data/exp`; set `EXP_BASE` on another machine.
-5. A fitted `calibrated` speed-to-mean-threshold mapping before candidates can
-   run. The pending mapping is intentionally blank and fails closed.
+5. A fitted `calibrated` speed-to-mean-threshold mapping before randomized-path
+   candidates can run. The pending mapping is intentionally blank and fails
+   closed. The fixed-threshold SeaCache pipeline does not use this mapping.
 6. The locked AlexNet weight used by LPIPS under a Torch model cache. Set
    `METRICS_MODEL_CACHE` when it cannot be inferred from an ancestor
    `models/torch-cache` directory.
@@ -93,3 +94,17 @@ bash experiments/random_threshold_collection_v1/launch_4gpu.sh finalize
 The four-GPU launcher assigns one shard to each visible GPU 0–3. Generated
 artifacts remain under `$EXP_BASE/$RUN_ID`; only a symlink is created in
 `experiment_results/`.
+
+For the fixed-threshold SeaCache dataset, use a separate `RUN_ID` and run:
+
+```bash
+bash experiments/seacache_threshold_collection_v1/launch_4gpu.sh plan
+bash experiments/seacache_threshold_collection_v1/launch_4gpu.sh profile
+bash experiments/seacache_threshold_collection_v1/launch_4gpu.sh baselines
+bash experiments/seacache_threshold_collection_v1/launch_4gpu.sh candidates
+bash experiments/seacache_threshold_collection_v1/launch_4gpu.sh finalize
+```
+
+This path is runnable immediately after manifest creation: it samples 1,000
+prompts and three distinct values per prompt from the frozen nine-threshold
+Wan2.2 grid, producing 1,000 baselines and 3,000 candidates.

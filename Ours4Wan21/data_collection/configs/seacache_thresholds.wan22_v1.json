@@ -1,0 +1,15 @@
+{
+  "schema": "ours4wan21_seacache_threshold_grid_v1",
+  "source_reference": "work/Wan2.2/experiments/seacache_vbench30_50step_45f_480p",
+  "source_protocol": "Wan2.2-T2V-A14B fixed-threshold timestep-only SeaCache",
+  "source_files": {
+    "README.md": "12894569db624712f97f4c655ad07bf8e3b3c629627cf7ef4ffb1c0bdcd60041",
+    "launch_queued_4gpu.sh": "93bab75e2bd546da1775d7c329fece1dd54c79258371e192b9730cf611923074",
+    "queue_then_run_shard.sh": "0ab96293bca9b69d6f90d3765ac53c259f3a2fe624c774b7fb54435a26f290a0"
+  },
+  "thresholds": [0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, 0.60, 0.70],
+  "thresholds_per_prompt": 3,
+  "sampling_without_replacement": true,
+  "selection_distribution": "uniform_without_replacement_3_of_9_per_prompt",
+  "notes": "Frozen to the local Wan2.2 SeaCache VBench30 threshold list; copied here so the offical-code transfer unit is self-contained."
+}

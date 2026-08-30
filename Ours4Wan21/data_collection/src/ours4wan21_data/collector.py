@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect one Wan2.1 full-reference or random-threshold manifest shard."""
+"""Collect one Wan2.1 baseline, random-path, or fixed SeaCache manifest shard."""
 
 from __future__ import annotations
 
@@ -15,17 +15,19 @@ from typing import Any
 import torch
 
 from .manifest import (
-    NUM_CANDIDATES,
-    NUM_SELECTED_PROMPTS,
     NUM_SHARDS,
     NUM_STEPS,
     PROTOCOL,
     SCHEMA_CANDIDATE_COMPLETE,
     SCHEMA_PLAN,
     SCHEMA_RUNNABLE,
+    SCHEMA_SEACACHE,
+    manifest_contract,
     read_jsonl,
+    validate_candidate_manifest,
     validate_plan,
     validate_runnable,
+    validate_seacache_manifest,
 )
 from .metrics import (
     FullReferenceMetricEvaluator,
@@ -100,32 +102,39 @@ def load_manifest(path: Path, mode: str) -> list[dict[str, Any]]:
             raise ValueError("candidate collection requires a calibrated runnable manifest")
     elif rows[0].get("schema") == SCHEMA_RUNNABLE:
         validate_runnable(rows)
+    elif rows[0].get("schema") == SCHEMA_SEACACHE:
+        validate_seacache_manifest(rows)
     else:
         raise ValueError("unknown manifest schema")
     return rows
 
 
 def unique_prompt_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    contract = manifest_contract(rows)
+    prompt_count = int(contract["selected_prompt_count"])
     prompts: dict[int, dict[str, Any]] = {}
     for row in rows:
         rank = int(row["prompt_rank"])
         prompts.setdefault(rank, row)
-    if sorted(prompts) != list(range(NUM_SELECTED_PROMPTS)):
-        raise ValueError("prompt ranks must be exactly 0..2999")
-    return [prompts[index] for index in range(NUM_SELECTED_PROMPTS)]
+    if sorted(prompts) != list(range(prompt_count)):
+        raise ValueError(f"prompt ranks must be exactly 0..{prompt_count - 1}")
+    return [prompts[index] for index in range(prompt_count)]
 
 
 def selected_rows(rows: list[dict[str, Any]], mode: str, shard: int) -> list[dict[str, Any]]:
     if not 0 <= shard < NUM_SHARDS:
         raise ValueError("shard index must be in [0,3]")
+    contract = manifest_contract(rows)
     if mode == "baseline":
         result = [row for row in unique_prompt_rows(rows) if int(row["prompt_rank"]) % NUM_SHARDS == shard]
-        if len(result) != 750:
-            raise ValueError(f"baseline shard must contain 750 prompts, got {len(result)}")
+        expected = int(contract["baselines_per_shard"])
+        if len(result) != expected:
+            raise ValueError(f"baseline shard must contain {expected} prompts, got {len(result)}")
         return result
     result = [row for row in rows if int(row["shard_index"]) == shard]
-    if len(result) != NUM_CANDIDATES // NUM_SHARDS:
-        raise ValueError(f"candidate shard must contain 2250 rows, got {len(result)}")
+    expected = int(contract["candidates_per_shard"])
+    if len(result) != expected:
+        raise ValueError(f"candidate shard must contain {expected} rows, got {len(result)}")
     return result
 
 
@@ -337,7 +346,15 @@ def collect_one(
         pipeline,
         pipeline_init_wall_seconds=init_seconds,
         output_path=paths["timing"],
-        implementation=("wan21_full_compute" if args.mode == "baseline" else "ours_random_threshold"),
+        implementation=(
+            "wan21_full_compute"
+            if args.mode == "baseline"
+            else (
+                "seacache_fixed_threshold"
+                if row.get("policy_family") == "fixed_seacache_threshold"
+                else "ours_random_threshold"
+            )
+        ),
     )
     profiler.install()
     video = pipeline.generate(
@@ -483,8 +500,14 @@ def collect_one(
         "split": row["split"],
         "candidate_index_for_prompt": int(row["candidate_index_for_prompt"]),
         "shard_index": int(row["shard_index"]),
-        "target_speedup": float(row["target_speedup"]),
-        "q": float(row["q"]),
+        "policy_family": row.get("policy_family"),
+        "target_speedup": (
+            None if row.get("target_speedup") is None else float(row["target_speedup"])
+        ),
+        "q": None if row.get("q") is None else float(row["q"]),
+        "fixed_threshold": (
+            None if row.get("fixed_threshold") is None else float(row["fixed_threshold"])
+        ),
         "mean_threshold": float(row["mean_threshold"]),
     }
     step_rows = [
@@ -584,6 +607,8 @@ def main() -> None:
     if shutil.which(args.ffprobe_bin) is None:
         raise FileNotFoundError("ffprobe is missing")
     rows = load_manifest(args.manifest, args.mode)
+    if args.mode == "candidate":
+        validate_candidate_manifest(rows)
     selected = selected_rows(rows, args.mode, args.shard_index)
     validate_flops_profile(args.flops_profile)
     if args.cpu_validate:

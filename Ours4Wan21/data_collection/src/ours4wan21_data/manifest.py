@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build pending plans and calibrated runnable manifests for Wan2.1 data."""
+"""Build randomized-path and fixed-threshold manifests for Wan2.1 data."""
 
 from __future__ import annotations
 
@@ -16,13 +16,21 @@ from typing import Any, Iterable
 
 SCHEMA_PLAN = "ours4wan21_random_threshold_plan_v1"
 SCHEMA_RUNNABLE = "ours4wan21_random_threshold_runnable_v1"
+SCHEMA_SEACACHE = "ours4wan21_seacache_threshold_manifest_v1"
 SCHEMA_CANDIDATE_COMPLETE = "ours4wan21_candidate_complete_v3"
 MAPPING_SCHEMA = "ours4wan21_speed_threshold_mapping_v1"
+SEACACHE_THRESHOLD_CONFIG_SCHEMA = "ours4wan21_seacache_threshold_grid_v1"
 NUM_STEPS = 50
 NUM_SOURCE_PROMPTS = 5000
 NUM_SELECTED_PROMPTS = 3000
 CANDIDATES_PER_PROMPT = 3
 NUM_CANDIDATES = NUM_SELECTED_PROMPTS * CANDIDATES_PER_PROMPT
+SEACACHE_NUM_SELECTED_PROMPTS = 1000
+SEACACHE_CANDIDATES_PER_PROMPT = 3
+SEACACHE_NUM_CANDIDATES = (
+    SEACACHE_NUM_SELECTED_PROMPTS * SEACACHE_CANDIDATES_PER_PROMPT
+)
+SEACACHE_THRESHOLDS = (0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, 0.60, 0.70)
 NUM_SHARDS = 4
 FORCED_RECOMPUTE_STEPS = frozenset({0, NUM_STEPS - 1})
 ELIGIBLE_STEPS = tuple(i for i in range(NUM_STEPS) if i not in FORCED_RECOMPUTE_STEPS)
@@ -291,6 +299,226 @@ def build_plan(
         "protocol": PROTOCOL,
     }
     return rows, summary
+
+
+def load_seacache_threshold_config(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or payload.get("schema") != SEACACHE_THRESHOLD_CONFIG_SCHEMA:
+        raise ValueError("invalid SeaCache threshold-grid config schema")
+    thresholds = tuple(float(value) for value in payload.get("thresholds", []))
+    if thresholds != SEACACHE_THRESHOLDS:
+        raise ValueError(
+            "SeaCache threshold grid must exactly match the frozen local Wan2.2 list: "
+            f"{list(SEACACHE_THRESHOLDS)}"
+        )
+    if int(payload.get("thresholds_per_prompt", -1)) != SEACACHE_CANDIDATES_PER_PROMPT:
+        raise ValueError("SeaCache config must select exactly three thresholds per prompt")
+    if payload.get("sampling_without_replacement") is not True:
+        raise ValueError("SeaCache thresholds must be sampled without replacement per prompt")
+    source_files = payload.get("source_files")
+    if (
+        not isinstance(source_files, dict)
+        or set(source_files)
+        != {"README.md", "launch_queued_4gpu.sh", "queue_then_run_shard.sh"}
+        or any(
+            not isinstance(value, str) or len(value) != 64
+            for value in source_files.values()
+        )
+    ):
+        raise ValueError("SeaCache threshold config requires frozen Wan2.2 source hashes")
+    return payload
+
+
+def build_seacache_manifest(
+    prompt_pool: Path,
+    threshold_config: Path,
+    seed: int = DEFAULT_SEED,
+    prompt_selection_seed: int = DEFAULT_PROMPT_SELECTION_SEED,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Freeze 1,000 prompts and three fixed SeaCache thresholds per prompt."""
+
+    pool = load_prompt_pool(prompt_pool)
+    config = load_seacache_threshold_config(threshold_config)
+    selector = random.Random(prompt_selection_seed)
+    selected = selector.sample(pool, SEACACHE_NUM_SELECTED_PROMPTS)
+    rows: list[dict[str, Any]] = []
+    config_hash = sha256(threshold_config)
+    for prompt_rank, prompt in enumerate(selected):
+        split = "train" if prompt_rank < 800 else ("val" if prompt_rank < 900 else "test")
+        threshold_seed = seed + 5_000_003 * (prompt_rank + 1)
+        sampled = random.Random(threshold_seed).sample(list(SEACACHE_THRESHOLDS), 3)
+        for local_index, threshold in enumerate(sampled):
+            release_index = len(rows)
+            rows.append({
+                "schema": SCHEMA_SEACACHE,
+                "release_index": release_index,
+                "trajectory_id": f"{prompt['sample_id']}__sc{release_index:04d}",
+                "prompt_rank": prompt_rank,
+                "prompt_selection_rank": prompt_rank,
+                "sample_id": prompt["sample_id"],
+                "prompt": prompt["prompt"],
+                "split": split,
+                "part": prompt.get("part", ""),
+                "content_group": prompt.get("content_group", ""),
+                "length_group": prompt.get("length_group", ""),
+                "motion_group": prompt.get("motion_group", ""),
+                "topic_tag": prompt.get("topic_tag", ""),
+                "candidate_index_for_prompt": local_index,
+                "shard_index": release_index % NUM_SHARDS,
+                "num_shards": NUM_SHARDS,
+                "target_speedup": None,
+                "q": None,
+                "fixed_threshold": threshold,
+                "mean_threshold": threshold,
+                "threshold_min": threshold,
+                "threshold_max": threshold,
+                "threshold_path": [threshold] * NUM_STEPS,
+                "threshold_grid": list(SEACACHE_THRESHOLDS),
+                "threshold_grid_config": str(threshold_config.resolve()),
+                "threshold_grid_config_sha256": config_hash,
+                "threshold_selection_seed": threshold_seed,
+                "threshold_selection_distribution": (
+                    "uniform_without_replacement_3_of_9_per_prompt"
+                ),
+                "manifest_seed": seed,
+                "prompt_selection_seed": prompt_selection_seed,
+                "prompt_selection_distribution": "uniform_without_replacement_1000_of_5000",
+                "forced_recompute_steps": sorted(FORCED_RECOMPUTE_STEPS),
+                "policy_family": "fixed_seacache_threshold",
+                "calibration_status": "not_applicable_fixed_threshold",
+                "protocol": PROTOCOL,
+            })
+    validate_seacache_manifest(rows)
+    summary = {
+        "schema": SCHEMA_SEACACHE,
+        "prompt_pool": str(prompt_pool.resolve()),
+        "prompt_pool_sha256": sha256(prompt_pool),
+        "threshold_grid_config": str(threshold_config.resolve()),
+        "threshold_grid_config_sha256": config_hash,
+        "threshold_grid_source": config.get("source_reference"),
+        "threshold_grid_source_files": config.get("source_files"),
+        "thresholds": list(SEACACHE_THRESHOLDS),
+        "threshold_sampling": "uniform_without_replacement_3_of_9_per_prompt",
+        "selection_distribution": "uniform_without_replacement_1000_of_5000",
+        "prompt_selection_seed": prompt_selection_seed,
+        "seed": seed,
+        "source_prompt_count": len(pool),
+        "selected_prompt_count": len(selected),
+        "selected_part_count": len({str(row.get("part") or "") for row in selected}),
+        "candidate_count": len(rows),
+        "candidates_per_prompt": SEACACHE_CANDIDATES_PER_PROMPT,
+        "split_counts": dict(Counter(row["split"] for row in rows)),
+        "prompt_split_counts": {"train": 800, "val": 100, "test": 100},
+        "shard_counts": dict(Counter(row["shard_index"] for row in rows)),
+        "candidate_runnable": True,
+        "protocol": PROTOCOL,
+    }
+    return rows, summary
+
+
+def validate_seacache_manifest(rows: list[dict[str, Any]]) -> None:
+    if len(rows) != SEACACHE_NUM_CANDIDATES:
+        raise ValueError(
+            f"expected {SEACACHE_NUM_CANDIDATES} SeaCache rows, got {len(rows)}"
+        )
+    if [row.get("release_index") for row in rows] != list(range(SEACACHE_NUM_CANDIDATES)):
+        raise ValueError("SeaCache release_index must be contiguous")
+    if len({row.get("trajectory_id") for row in rows}) != SEACACHE_NUM_CANDIDATES:
+        raise ValueError("SeaCache trajectory IDs are not unique")
+    prompt_counts = Counter(str(row.get("sample_id")) for row in rows)
+    if (
+        len(prompt_counts) != SEACACHE_NUM_SELECTED_PROMPTS
+        or set(prompt_counts.values()) != {SEACACHE_CANDIDATES_PER_PROMPT}
+    ):
+        raise ValueError("SeaCache manifest must contain three rows for each of 1,000 prompts")
+    if Counter(int(row["shard_index"]) for row in rows) != Counter({i: 750 for i in range(4)}):
+        raise ValueError("SeaCache candidate shards must be exactly 750 each")
+    if Counter(str(row["split"]) for row in rows) != Counter(train=2400, val=300, test=300):
+        raise ValueError("SeaCache candidate split must be 2400/300/300")
+    if len({str(row.get("part") or "") for row in rows}) != 98:
+        raise ValueError("selected SeaCache prompts must retain all 98 OpenVidHD parts")
+    config_hashes = {str(row.get("threshold_grid_config_sha256") or "") for row in rows}
+    if len(config_hashes) != 1 or len(next(iter(config_hashes))) != 64:
+        raise ValueError("SeaCache threshold-grid config checksum is missing or inconsistent")
+    for prompt_rank in range(SEACACHE_NUM_SELECTED_PROMPTS):
+        start = prompt_rank * SEACACHE_CANDIDATES_PER_PROMPT
+        group = rows[start:start + SEACACHE_CANDIDATES_PER_PROMPT]
+        if any(int(row.get("prompt_rank", -1)) != prompt_rank for row in group):
+            raise ValueError("SeaCache prompt rows must be contiguous in selection order")
+        if [int(row.get("candidate_index_for_prompt", -1)) for row in group] != [0, 1, 2]:
+            raise ValueError("SeaCache candidate indices must be 0,1,2 inside each prompt")
+        expected_seed = int(group[0].get("manifest_seed", -1)) + 5_000_003 * (
+            prompt_rank + 1
+        )
+        expected = random.Random(expected_seed).sample(list(SEACACHE_THRESHOLDS), 3)
+        observed = [float(row.get("fixed_threshold")) for row in group]
+        if observed != expected or len(set(observed)) != 3:
+            raise ValueError("SeaCache threshold sample is not reproducible/distinct")
+        if any(int(row.get("threshold_selection_seed", -1)) != expected_seed for row in group):
+            raise ValueError("SeaCache threshold-selection seed mismatch")
+    for row in rows:
+        if row.get("schema") != SCHEMA_SEACACHE:
+            raise ValueError("SeaCache manifest schema mismatch")
+        if row.get("policy_family") != "fixed_seacache_threshold":
+            raise ValueError("SeaCache policy family mismatch")
+        if row.get("calibration_status") != "not_applicable_fixed_threshold":
+            raise ValueError("fixed SeaCache rows must not claim calibrated random thresholds")
+        if row.get("target_speedup") is not None or row.get("q") is not None:
+            raise ValueError("fixed SeaCache rows must not invent target speedup or q")
+        threshold = float(row["fixed_threshold"])
+        if threshold not in SEACACHE_THRESHOLDS:
+            raise ValueError("fixed SeaCache threshold is outside the frozen Wan2.2 list")
+        if row.get("threshold_grid") != list(SEACACHE_THRESHOLDS):
+            raise ValueError("SeaCache row threshold grid mismatch")
+        if not math.isclose(float(row["mean_threshold"]), threshold, abs_tol=0.0):
+            raise ValueError("fixed SeaCache mean threshold mismatch")
+        if row.get("threshold_path") != [threshold] * NUM_STEPS:
+            raise ValueError("fixed SeaCache row must use one constant threshold for 50 steps")
+        if row.get("protocol") != PROTOCOL:
+            raise ValueError("SeaCache protocol mismatch")
+        release_index = int(row["release_index"])
+        if int(row["shard_index"]) != release_index % NUM_SHARDS:
+            raise ValueError("SeaCache release-index shard derivation mismatch")
+        if row["trajectory_id"] != f"{row['sample_id']}__sc{release_index:04d}":
+            raise ValueError("SeaCache trajectory identity derivation mismatch")
+        if row.get("forced_recompute_steps") != sorted(FORCED_RECOMPUTE_STEPS):
+            raise ValueError("SeaCache forced recompute steps mismatch")
+
+
+def manifest_contract(rows: list[dict[str, Any]]) -> dict[str, int | str | bool]:
+    if not rows:
+        raise ValueError("manifest is empty")
+    schema = rows[0].get("schema")
+    if schema in {SCHEMA_PLAN, SCHEMA_RUNNABLE}:
+        return {
+            "schema": str(schema),
+            "selected_prompt_count": NUM_SELECTED_PROMPTS,
+            "candidate_count": NUM_CANDIDATES,
+            "baselines_per_shard": NUM_SELECTED_PROMPTS // NUM_SHARDS,
+            "candidates_per_shard": NUM_CANDIDATES // NUM_SHARDS,
+            "candidate_runnable": schema == SCHEMA_RUNNABLE,
+        }
+    if schema == SCHEMA_SEACACHE:
+        return {
+            "schema": str(schema),
+            "selected_prompt_count": SEACACHE_NUM_SELECTED_PROMPTS,
+            "candidate_count": SEACACHE_NUM_CANDIDATES,
+            "baselines_per_shard": SEACACHE_NUM_SELECTED_PROMPTS // NUM_SHARDS,
+            "candidates_per_shard": SEACACHE_NUM_CANDIDATES // NUM_SHARDS,
+            "candidate_runnable": True,
+        }
+    raise ValueError("unknown manifest schema")
+
+
+def validate_candidate_manifest(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        raise ValueError("manifest is empty")
+    if rows[0].get("schema") == SCHEMA_RUNNABLE:
+        validate_runnable(rows)
+    elif rows[0].get("schema") == SCHEMA_SEACACHE:
+        validate_seacache_manifest(rows)
+    else:
+        raise ValueError("candidate collection requires a runnable candidate manifest")
 
 
 def validate_plan(rows: list[dict[str, Any]]) -> None:
@@ -600,6 +828,14 @@ def main() -> None:
     materialize_parser.add_argument("--plan", type=Path, required=True)
     materialize_parser.add_argument("--calibration", type=Path, required=True)
     materialize_parser.add_argument("--output", type=Path, required=True)
+    seacache_parser = subparsers.add_parser("seacache-plan")
+    seacache_parser.add_argument("--prompt-pool", type=Path, required=True)
+    seacache_parser.add_argument("--threshold-config", type=Path, required=True)
+    seacache_parser.add_argument("--output", type=Path, required=True)
+    seacache_parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    seacache_parser.add_argument(
+        "--prompt-selection-seed", type=int, default=DEFAULT_PROMPT_SELECTION_SEED
+    )
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
@@ -611,12 +847,22 @@ def main() -> None:
     elif args.command == "materialize":
         rows, summary = materialize(args.plan.resolve(strict=True), args.calibration.resolve(strict=True))
         _write_bundle(args.output, rows, summary)
+    elif args.command == "seacache-plan":
+        rows, summary = build_seacache_manifest(
+            args.prompt_pool.resolve(strict=True),
+            args.threshold_config.resolve(strict=True),
+            args.seed,
+            args.prompt_selection_seed,
+        )
+        _write_bundle(args.output, rows, summary)
     else:
         rows = read_jsonl(args.manifest.resolve(strict=True))
         if rows and rows[0].get("schema") == SCHEMA_PLAN:
             validate_plan(rows)
         elif rows and rows[0].get("schema") == SCHEMA_RUNNABLE:
             validate_runnable(rows)
+        elif rows and rows[0].get("schema") == SCHEMA_SEACACHE:
+            validate_seacache_manifest(rows)
         else:
             raise ValueError("unknown or empty manifest")
         print(json.dumps({"status": "ok", "rows": len(rows), "schema": rows[0]["schema"]}, indent=2))

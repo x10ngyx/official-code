@@ -49,7 +49,9 @@ def check_package() -> tuple[dict[str, Any], list[str]]:
         errors.append(f"bundled prompt row count mismatch: expected {PROMPT_ROWS}, got {rows}")
     required_files = (
         DATA_PROJECT / "configs/speed_threshold_mapping.pending.json",
+        DATA_PROJECT / "configs/seacache_thresholds.wan22_v1.json",
         DATA_PROJECT / "experiments/random_threshold_collection_v1/launch_4gpu.sh",
+        DATA_PROJECT / "experiments/seacache_threshold_collection_v1/launch_4gpu.sh",
         OFFICIAL_CODE / "VideoMetrics/evaluate.py",
         OFFICIAL_CODE / "VideoMetrics/video_metrics/evaluator.py",
         OFFICIAL_CODE / "VideoMetrics/video_metrics/core.py",
@@ -61,6 +63,17 @@ def check_package() -> tuple[dict[str, Any], list[str]]:
     missing = [str(path) for path in required_files if not path.is_file()]
     if missing:
         errors.append(f"package files missing: {missing}")
+    seacache_config_path = DATA_PROJECT / "configs/seacache_thresholds.wan22_v1.json"
+    seacache_thresholds = None
+    if seacache_config_path.is_file():
+        try:
+            from .manifest import load_seacache_threshold_config
+
+            seacache_thresholds = load_seacache_threshold_config(seacache_config_path)[
+                "thresholds"
+            ]
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"fixed SeaCache threshold config is invalid: {exc}")
     versions = {
         name: package_version(name)
         for name in (
@@ -83,6 +96,8 @@ def check_package() -> tuple[dict[str, Any], list[str]]:
         "prompt_pool": str(PROMPT_POOL),
         "prompt_sha256": digest,
         "prompt_rows": rows,
+        "seacache_threshold_config": str(seacache_config_path),
+        "seacache_thresholds": seacache_thresholds,
         "python_distributions": versions,
         "executables": executables,
     }, errors

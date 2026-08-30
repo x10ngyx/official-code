@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only integrity audit for a Wan2.1 randomized collection archive."""
+"""Read-only integrity audit for a Wan2.1 SeaCache collection archive."""
 
 from __future__ import annotations
 
@@ -18,7 +18,12 @@ from .collector import (
     unique_prompt_rows,
     validate_flops_profile,
 )
-from .manifest import NUM_CANDIDATES, NUM_STEPS, read_jsonl, validate_runnable
+from .manifest import (
+    NUM_STEPS,
+    manifest_contract,
+    read_jsonl,
+    validate_candidate_manifest,
+)
 from .metrics import load_metric_artifacts
 from .paths import require_result_path
 from .performance import compare_matched, read_json, summarize_timing
@@ -145,10 +150,25 @@ def validate_candidate(
     if completion is None:
         raise FileNotFoundError(paths["complete"])
     trace = read_json(paths["trace"])
-    if trace.get("schema") != "ours4wan21_random_threshold_trace_v2":
+    fixed_seacache = row.get("policy_family") == "fixed_seacache_threshold"
+    expected_trace_schema = (
+        "ours4wan21_seacache_fixed_threshold_trace_v1"
+        if fixed_seacache
+        else "ours4wan21_random_threshold_trace_v2"
+    )
+    expected_gate_mode = (
+        "seacache_aligned_independent_cfg_branches_filtered_boundary_fixed_threshold"
+        if fixed_seacache
+        else "seacache_aligned_independent_cfg_branches_filtered_boundary_dynamic_threshold"
+    )
+    if trace.get("schema") != expected_trace_schema:
         raise ValueError(f"candidate trace schema mismatch: {paths['trace']}")
-    if trace.get("gate_mode") != "seacache_aligned_independent_cfg_branches_filtered_boundary_dynamic_threshold":
+    if trace.get("gate_mode") != expected_gate_mode:
         raise ValueError(f"candidate gate mode mismatch: {paths['trace']}")
+    if trace.get("policy_family") != row.get("policy_family"):
+        raise ValueError(f"candidate trace policy-family mismatch: {paths['trace']}")
+    if fixed_seacache and not close(trace.get("fixed_threshold"), row.get("fixed_threshold")):
+        raise ValueError(f"candidate fixed-threshold provenance mismatch: {paths['trace']}")
     if trace.get("count_unit") != "cfg_branch_call":
         raise ValueError(f"candidate action count unit mismatch: {paths['trace']}")
     expected_distance_contract = {
@@ -331,6 +351,12 @@ def validate_candidate(
     ssim = metric_result["metrics"]["ssim_rgb"]
     lpips = metric_result["metrics"]["lpips_alex_v0_1_spatial"]
     trajectory = completion["trajectory_row"]
+    if trajectory.get("policy_family") != row.get("policy_family"):
+        raise ValueError(f"completion policy-family mismatch: {paths['complete']}")
+    if fixed_seacache and not close(
+        trajectory.get("fixed_threshold"), row.get("fixed_threshold")
+    ):
+        raise ValueError(f"completion fixed-threshold mismatch: {paths['complete']}")
     branch_reuse = {
         branch: sum(
             decision["branch"] == branch and decision["action"] == "reuse"
@@ -451,7 +477,9 @@ def audit(
     if output.exists():
         raise FileExistsError(f"refusing to overwrite audit report: {output}")
     rows = read_jsonl(manifest)
-    validate_runnable(rows)
+    validate_candidate_manifest(rows)
+    contract = manifest_contract(rows)
+    expected_candidate_count = int(contract["candidate_count"])
     profile = validate_flops_profile(profile_path)
     ready, missing = all_baselines_complete(rows, parent)
     if not ready:
@@ -466,8 +494,11 @@ def audit(
         if load_completion(parent, row) is None:
             break
         available.append(row)
-    if require_complete and len(available) != NUM_CANDIDATES:
-        raise RuntimeError(f"complete audit requires 9000 candidates; prefix={len(available)}")
+    if require_complete and len(available) != expected_candidate_count:
+        raise RuntimeError(
+            "complete audit requires "
+            f"{expected_candidate_count} candidates; prefix={len(available)}"
+        )
     vbench_summary = None
     if require_complete:
         vbench_path = parent / "quality" / "vbench_summary.json"
@@ -476,7 +507,8 @@ def audit(
             vbench_summary.get("schema") != "ours4wan21_vbench_summary_v1"
             or vbench_summary.get("protocol") != "vbench_custom_input_raw_mean_v1"
             or int(vbench_summary.get("baseline_video_count", -1)) != len(baseline_performance)
-            or int(vbench_summary.get("candidate_video_count", -1)) != NUM_CANDIDATES
+            or int(vbench_summary.get("candidate_video_count", -1))
+            != expected_candidate_count
         ):
             raise ValueError(f"invalid archive VBench summary: {vbench_path}")
         for condition in ("baseline", "candidate"):

@@ -1,9 +1,17 @@
-# Ours4Wan21 randomized behavior-data collection
+# Ours4Wan21 behavior-data collection
 
 This subproject creates Wan2.1-T2V-1.3B behavior trajectories by randomizing
 the per-denoising-step threshold supplied to the clean SeaCache gate.  It does
 not directly randomize or force `reuse/recompute`; those actions remain real
 environment outcomes from the native gate state.
+
+It also contains a matched fixed-threshold SeaCache pipeline. That pipeline
+selects 1,000 prompts from the same 5,000-prompt pool and samples three
+distinct thresholds per prompt from the frozen local Wan2.2 grid
+`0.15/0.20/0.25/0.30/0.35/0.40/0.50/0.60/0.70`. It produces 1,000 shared
+baselines and 3,000 candidates. Everything after manifest construction uses
+the same collection, metric, timing, TFLOPs, VBench, publication, and audit
+contracts as randomized behavior data.
 
 The transfer unit is the complete sibling `offical-code/` tree. This subproject
 bundles only its unique frozen prompt snapshot, collection code, tests and
@@ -46,6 +54,14 @@ remain explicit external inputs. See `REMOTE_DEPLOYMENT.md`.
 
 The pending config in `configs/speed_threshold_mapping.pending.json` contains
 no placeholder thresholds or invented relationship.
+
+The fixed-threshold SeaCache pipeline does not need calibration. Its
+single-stage manifest freezes 1,000 prompts, an 800/100/100 prompt split, and
+three thresholds sampled uniformly without replacement for each prompt. It
+uses the same prompt-selection seed `2026073001` and manifest seed `20260722`;
+`target_speedup` and `q` remain null because measured speedup is an outcome,
+not a conditioning variable. The grid provenance is frozen in
+`configs/seacache_thresholds.wan22_v1.json`.
 
 ## Collection and metrics
 
@@ -103,7 +119,8 @@ FLOPs speedup is reported separately as a ratio of estimated operation sums.
 - `src/ours4wan21_data/`: implementation modules.
 - `resources/`: immutable bundled OpenVid prompt pool and integrity metadata.
 - `configs/`: pending calibration contract.
-- `experiments/random_threshold_collection_v1/`: four-GPU launcher.
+- `experiments/random_threshold_collection_v1/`: 3,000×3 randomized-path launcher.
+- `experiments/seacache_threshold_collection_v1/`: 1,000×3 fixed SeaCache launcher.
 - `experiments/calflops_profile_v1/`: one-time real-shape DiT profile.
 - `tests/`: CPU contract tests.
 - `experiment_results/`: external-result symlink index.
