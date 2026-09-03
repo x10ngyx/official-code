@@ -41,6 +41,8 @@ git -C "$destination" checkout --detach "$commit"
 git -C "$destination" apply "$project_dir/patches/wan22_42bf4cf_seacache.patch"
 install -m 0644 "$project_dir/runtime/seacache.py" "$destination/wan/seacache.py"
 install -m 0644 "$project_dir/runtime/inference_timing.py" "$destination/wan/inference_timing.py"
+install -m 0644 "$project_dir/../ComponentMetrics/component_timing.py" \
+  "$destination/wan/component_timing.py"
 
 "$python_bin" "$script_dir/validate_prepared_tree.py" \
   --source "$destination" --mode prepared --write-manifest

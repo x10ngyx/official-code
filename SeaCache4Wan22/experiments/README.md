@@ -12,3 +12,7 @@ DiT Calflops, and separately recorded T5/VAE Calflops profiles.
 reuses that locked profiler, runs repository VideoMetrics and VbenchEvaluation,
 and emits one auditable report containing time, TFLOPs, PSNR, SSIM, LPIPS, and
 Vbench200 subset scores.
+
+`timing_scope_comparison_v1/` is a CPU-only audit that compares the historical
+compute-only latency headline with the current complete-generate wall-time
+headline on the same archived Wan2.2 SeaCache runs.

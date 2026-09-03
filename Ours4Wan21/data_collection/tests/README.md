@@ -14,6 +14,6 @@ per-frame/per-video/full-summary artifacts. Tests also verify the shared `VideoM
 
 ```bash
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 \
-PYTHONPATH=src conda run --no-capture-output -n Wan2.1 \
+PYTHONPATH=src conda run --no-capture-output -n wan2.2 \
 python -m unittest discover -s tests -v
 ```

@@ -12,9 +12,10 @@
     "prepared_file_sha256": {
       "generate.py": "43b5c37e84747efb40b0caeea9941d319804405d80444ec19e50b65729d3fe9d",
       "wan/text2video.py": "c98af557adb35ae639a962a222d0a086dadad60738e947e52ffc9baced5dadf1",
-      "wan/modules/model.py": "4135cb632c3551c7f0a06e42b0b9d1b32d275d2675adbdd8abb0ea341a510366",
+      "wan/modules/model.py": "c5674f0888f2dbbbf254b157ceb97b882ebdb218e2989fb7cbfe99ffb89752ae",
       "wan/seacache.py": "9fe6c950746ac788c4f08d4543291ffffd538b2a1568b72b8a5346de5eaca422",
-      "wan/inference_timing.py": "42f921091ef8ddb77b682704da4a92096d2dbb333c1e682fe9b18f84a49e2de1"
+      "wan/inference_timing.py": "665e7f5974621748e91c5a4466b098e62fe54c91f6480baaf5aa9ff7ef2495a2",
+      "wan/component_timing.py": "24b4953c2d5c1059ab29be9f0796401ad4ab93eb24aa8606ab3f7297a5f724fe"
     }
   },
   "development_reference": {
@@ -25,11 +26,13 @@
   },
   "integration_artifacts": {
     "patch": "patches/wan22_42bf4cf_seacache.patch",
-    "patch_sha256": "f4ff62ea1778c8f647ad9c33276fa039f3804ae9513143c279a193540bb4f528",
+    "patch_sha256": "f620d4e6c7b15577b2bcacd6c2ecd25531342db8ab64c8dc1c96054abbe6c039",
     "runtime": "runtime/seacache.py",
     "runtime_sha256": "9fe6c950746ac788c4f08d4543291ffffd538b2a1568b72b8a5346de5eaca422",
     "timing_runtime": "runtime/inference_timing.py",
-    "timing_runtime_sha256": "42f921091ef8ddb77b682704da4a92096d2dbb333c1e682fe9b18f84a49e2de1",
+    "timing_runtime_sha256": "665e7f5974621748e91c5a4466b098e62fe54c91f6480baaf5aa9ff7ef2495a2",
+    "component_timing": "../ComponentMetrics/component_timing.py",
+    "component_timing_sha256": "24b4953c2d5c1059ab29be9f0796401ad4ab93eb24aa8606ab3f7297a5f724fe",
     "protocol": "configs/wan22_t2v_a14b_50step_dpmpp.json",
     "protocol_sha256": "7dec6174e10e7bb9da0c9418d0b83d127b81656a2a67eb223f0b70f5ba5c444f"
   },

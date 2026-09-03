@@ -36,6 +36,13 @@ def load_entrypoint_module():
 
 
 class StaticIntegrationTests(unittest.TestCase):
+    def test_launcher_uses_only_the_project_wan22_environment(self):
+        source = (PROJECT_DIR / "run_wan21.sh").read_text(encoding="utf-8")
+        self.assertIn("WAN22_PYTHON", source)
+        self.assertIn("-n wan2.2 python", source)
+        self.assertNotIn("WAN21_PYTHON", source)
+        self.assertNotIn("-n Wan2.1", source)
+
     def test_official_source_hash(self):
         source = PROJECT_DIR / "upstream" / "teacache_generate.py"
         self.assertEqual(

@@ -156,7 +156,7 @@ def main() -> None:
             payload["cuda_available"] = bool(torch.cuda.is_available())
             payload["cuda_device_count"] = int(torch.cuda.device_count())
             if not torch.cuda.is_available():
-                errors.append("CUDA is unavailable in the selected Wan2.1 Python environment")
+                errors.append("CUDA is unavailable in the project wan2.2 Python environment")
         except ImportError:
             errors.append("torch cannot be imported")
 

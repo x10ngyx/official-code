@@ -26,7 +26,7 @@ verification 目录重跑 baseline 和三个候选阈值。
 ## 运行
 
 ```bash
-env_python=/path/to/Wan2.1/bin/python
+env_python=/path/to/wan2.2/bin/python
 result_root=/all/yiran07-disk3/huteng_data/exp/teacache_wan21_threshold_calibration
 
 "$env_python" run_calibration.py \

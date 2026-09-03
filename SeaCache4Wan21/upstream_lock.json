@@ -29,11 +29,11 @@
     "excluded_methods": ["block cache", "CFG cache", "ZEUS", "TeaCache", "learned policy"]
   },
   "integration_artifact_sha256": {
-    "generate.py": "fa4d7e4a30dff57e09f4c01f87463cd5a808dba43815f8466db378a9d8b83b4c",
-    "inference_timing.py": "46a5175a6d4837df2c2f662ddbd84383ca6de3a8d322435f9b2e310b53157744",
+    "generate.py": "88505d7132ef4f1288db16a403c8cc34fc2c4aeae996a51be7398ab6089ded85",
+    "inference_timing.py": "fb4779b8d159371cafec24144e924f09546152a24543d68b24a43a231a552a0e",
     "seacache.py": "4739369e11401d9ed0e718d9fa84d419f987a5ed7701d7897f481382e0e5b17a",
-    "wan21_integration.py": "f82d514078b676a8cc5a5cd557ec26782aa997f8d9ae07ce944517287fb4214a",
-    "run_wan21.sh": "ba98a3d4927db090e45089a35f417c41aa443577f6825448dd2d4f3d1f356bee"
+    "wan21_integration.py": "507ddc5fbeec5c2dc1010196417ccf3d9774e472587271b97f218c1c96ec5b0b",
+    "run_wan21.sh": "69603f4a233ac2f0467ec24f43efae9e8203d2463cbf67b4cacd2c23df3ade2d"
   },
   "evaluation_boundary": {
     "paired_metrics": "../VideoMetrics/run_evaluation.sh",

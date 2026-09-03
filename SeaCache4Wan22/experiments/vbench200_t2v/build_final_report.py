@@ -62,9 +62,10 @@ def main() -> None:
         "ssim_rgb": metric(metrics, "ssim_rgb"), "lpips_alex_v0_1_spatial": metric(metrics, "lpips_alex_v0_1_spatial"),
     }
     payload = {
-        "schema": "seacache_vbench200_report_v2", "method": "SeaCache4Wan22",
+        "schema": "seacache_vbench200_report_v3", "method": "SeaCache4Wan22",
         "model": "Wan2.2-T2V-A14B", "dataset": "Vbench200", "threshold": config["threshold"],
         "use_ret_steps": config["use_ret_steps"], "protocol": config["protocol"],
+        "generation_runner": config.get("generation_runner"),
         "paired_fidelity_seacache_against_baseline": fidelity,
         "vbench200_subset_scores": {"official_full_vbench_score": False, "baseline": reference_vbench, "seacache": candidate_vbench},
         "performance": {
@@ -75,7 +76,7 @@ def main() -> None:
                 "inference_time_seconds_p90": baseline["pipeline_generate_wall_seconds"]["p90"],
                 "estimated_dit_tflops_per_video_mean": baseline["estimated_dit_tflops_per_video"]["mean"],
                 "t5_cuda_seconds_mean": baseline["t5_cuda_seconds"]["mean"],
-                "dit_cuda_seconds_mean": baseline["dit_forward_cuda_seconds"]["mean"],
+                "dit_cuda_seconds_mean": baseline["model_forward_cuda_seconds"]["mean"],
                 "vae_decode_cuda_seconds_mean": baseline["vae_decode_cuda_seconds"]["mean"],
                 "estimated_t5_tflops_per_video": baseline["estimated_t5_tflops_per_video"],
                 "estimated_vae_decode_tflops_per_video": baseline["estimated_vae_decode_tflops_per_video"],
@@ -86,7 +87,7 @@ def main() -> None:
                 "inference_time_seconds_p90": candidate["pipeline_generate_wall_seconds"]["p90"],
                 "estimated_dit_tflops_per_video_mean": candidate["estimated_dit_tflops_per_video"]["mean"],
                 "t5_cuda_seconds_mean": candidate["t5_cuda_seconds"]["mean"],
-                "dit_cuda_seconds_mean": candidate["dit_forward_cuda_seconds"]["mean"],
+                "dit_cuda_seconds_mean": candidate["model_forward_cuda_seconds"]["mean"],
                 "vae_decode_cuda_seconds_mean": candidate["vae_decode_cuda_seconds"]["mean"],
                 "estimated_t5_tflops_per_video": candidate["estimated_t5_tflops_per_video"],
                 "estimated_vae_decode_tflops_per_video": candidate["estimated_vae_decode_tflops_per_video"],
@@ -102,6 +103,14 @@ def main() -> None:
     }
     output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     b, c, comparison = payload["performance"]["baseline"], payload["performance"]["seacache"], payload["performance"]["comparison"]
+    lifecycle_caveat = (config.get("generation_runner") or {}).get(
+        "lifecycle_caveat"
+    )
+    lifecycle_note = (
+        f"Runner lifecycle caveat: {lifecycle_caveat}\n\n"
+        if lifecycle_caveat
+        else ""
+    )
     output_md.write_text(
         "# SeaCache4Wan22 Vbench200 report\n\n"
         f"Threshold: `{payload['threshold']}`; retention steps: `{payload['use_ret_steps']}`.\n\n"
@@ -118,6 +127,7 @@ def main() -> None:
         f"| Vbench200 total | {reference_vbench['total_score']:.6f} | {candidate_vbench['total_score']:.6f} |\n\n"
         f"Paired fidelity: PSNR `{fidelity['psnr_rgb_db']:.6f}` dB, SSIM `{fidelity['ssim_rgb']:.6f}`, LPIPS `{fidelity['lpips_alex_v0_1_spatial']:.6f}`.\n\n"
         f"Latency speedup: `{comparison['latency_speedup_ratio_of_sums']:.6f}x`; estimated DiT FLOPs speedup: `{comparison['dit_flops_speedup_ratio_of_sums']:.6f}x`.\n\n"
+        f"{lifecycle_note}"
         "VBench values are Vbench200 subset scores, not full-suite leaderboard scores. TFLOPs is a trace-weighted estimated DiT operation count.\n",
         encoding="utf-8",
     )

@@ -19,13 +19,13 @@ filtered-boundary SeaCache 实现。后者保留官方分支独立 gate/filter/r
 
 ## 运行
 
-使用 Wan2.1 环境，并保证其中安装 `calflops==0.3.2`；也可传
+使用项目统一的 `wan2.2` 环境，并保证其中安装 `calflops==0.3.2`；也可传
 `--calflops-source /path/to/calculate-flops.pytorch@027e89a` 使用锁定源码而不修改
 共享环境。VBench 可以使用单独环境，通过 `--vbench-python` 指定其 Python。结果目录必须位于
 `/all/yiran07-disk3/huteng_data/exp` 下。
 
 ```bash
-conda activate Wan2.1
+conda activate wan2.2
 
 python run_vbench200.py \
   --output-dir /all/yiran07-disk3/huteng_data/exp/seacache4wan21_vbench200_thr_0p2 \

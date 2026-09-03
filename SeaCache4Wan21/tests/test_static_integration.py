@@ -13,6 +13,13 @@ import generate
 
 
 class StaticIntegrationTests(unittest.TestCase):
+    def test_launcher_uses_only_the_project_wan22_environment(self) -> None:
+        source = (PROJECT / "run_wan21.sh").read_text(encoding="utf-8")
+        self.assertIn("WAN22_PYTHON", source)
+        self.assertIn("-n wan2.2 python", source)
+        self.assertNotIn("WAN21_PYTHON", source)
+        self.assertNotIn("-n Wan2.1", source)
+
     def test_baseline_does_not_enable_seacache(self) -> None:
         wrapper, remaining = generate.parse_wrapper_args(["--task", "t2v-14B"])
         self.assertFalse(wrapper.enable_seacache)

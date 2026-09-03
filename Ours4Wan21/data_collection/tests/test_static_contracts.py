@@ -33,6 +33,18 @@ class StaticContractTests(unittest.TestCase):
             for key in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
                 self.assertIn(f"export {key}=1", source)
 
+    def test_launchers_use_only_the_project_wan22_environment(self) -> None:
+        launchers = (
+            DATA_PROJECT / "experiments/random_threshold_collection_v1/launch_4gpu.sh",
+            DATA_PROJECT / "experiments/seacache_threshold_collection_v1/launch_4gpu.sh",
+        )
+        for launcher in launchers:
+            source = launcher.read_text(encoding="utf-8")
+            self.assertIn("WAN22_PYTHON", source)
+            self.assertIn("-n wan2.2 python", source)
+            self.assertNotIn("WAN21_PYTHON", source)
+            self.assertNotIn("-n Wan2.1", source)
+
     def test_seacache_grid_matches_frozen_wan22_list(self) -> None:
         payload = json.loads(
             (DATA_PROJECT / "configs/seacache_thresholds.wan22_v1.json").read_text(

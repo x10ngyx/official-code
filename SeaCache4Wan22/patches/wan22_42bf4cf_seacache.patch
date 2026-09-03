@@ -205,7 +205,7 @@ index 3a5cbcd..96cf422 100644
          logging.info("Creating WanTI2V pipeline.")
          wan_ti2v = wan.WanTI2V(
 diff --git a/wan/modules/model.py b/wan/modules/model.py
-index 6982fa1..39ae4a1 100644
+index 6982fa1..315e85e 100644
 --- a/wan/modules/model.py
 +++ b/wan/modules/model.py
 @@ -1,4 +1,5 @@
@@ -214,6 +214,29 @@ index 6982fa1..39ae4a1 100644
  import math
 
  import torch
+@@ -242,9 +243,8 @@ class WanAttentionBlock(nn.Module):
+         assert e[0].dtype == torch.float32
+ 
+         # self-attention
+-        y = self.self_attn(
+-            self.norm1(x).float() * (1 + e[1].squeeze(2)) + e[0].squeeze(2),
+-            seq_lens, grid_sizes, freqs)
++        x_m = self._modulated_norm1(x, e)
++        y = self.self_attn(x_m, seq_lens, grid_sizes, freqs)
+         with torch.amp.autocast('cuda', dtype=torch.float32):
+             x = x + y * e[2].squeeze(2)
+ 
+@@ -257,7 +256,10 @@ class WanAttentionBlock(nn.Module):
+             return x
+ 
+         x = cross_attn_ffn(x, context, context_lens, e)
+         return x
++
++    def _modulated_norm1(self, x, e):
++        return self.norm1(x).float() * (1 + e[1].squeeze(2)) + e[0].squeeze(2)
+ 
+ 
+ class Head(nn.Module):
 @@ -414,6 +415,11 @@ class WanModel(ModelMixin, ConfigMixin):
          context,
          seq_len,

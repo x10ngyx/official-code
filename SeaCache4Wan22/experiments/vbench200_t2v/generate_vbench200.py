@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Generate one statically sharded SeaCache4Wan22 Vbench200 condition."""
+"""Generate one VBench200 shard with one persistent WanT2V pipeline."""
 
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import gc
 import hashlib
 import json
+import logging
 import math
 import os
-import shlex
 import subprocess
 import sys
 import time
@@ -27,6 +28,8 @@ THREAD_ENV = {
     "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1",
     "MKL_NUM_THREADS": "1", "NUMEXPR_NUM_THREADS": "1",
 }
+for _name, _value in THREAD_ENV.items():
+    os.environ[_name] = _value
 sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
 from reporting import extract_component_latency  # noqa: E402
 
@@ -70,12 +73,30 @@ def write_locked(path: Path, payload: dict[str, Any], resume: bool) -> None:
     path.write_text(rendered, encoding="utf-8")
 
 
-def read_timing(path: Path, implementation: str) -> dict[str, Any]:
+def atomic_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.tmp.{os.getpid()}")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    os.replace(temporary, path)
+
+
+def read_timing(
+    path: Path, implementation: str, *, require_persistent: bool = False
+) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     seconds = payload.get("pipeline_generate_wall_seconds")
     if payload.get("status") != "success" or payload.get("implementation") != implementation or not isinstance(seconds, (int, float)) or not math.isfinite(seconds) or seconds <= 0:
         raise ValueError(f"invalid timing trace: {path}")
     extract_component_latency(payload)
+    lifecycle = payload.get("pipeline_lifecycle")
+    if require_persistent and (
+        not isinstance(lifecycle, dict)
+        or lifecycle.get("persistent_pipeline") is not True
+        or lifecycle.get("pipeline_init_accounted_in_this_sample") is not False
+    ):
+        raise ValueError(f"timing trace lacks persistent-pipeline provenance: {path}")
     return payload
 
 
@@ -96,6 +117,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--use-ret-steps", action="store_true")
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument(
+        "--physical-gpu",
+        help="Physical GPU identifier exposed as the worker's sole CUDA device.",
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -125,8 +150,9 @@ def main() -> None:
     jobs = [(index, row) for index, row in enumerate(prompts) if index % args.num_shards == args.shard_index]
     videos, timings = args.output_dir / "videos", args.output_dir / "timings"
     traces, logs = args.output_dir / "traces", args.output_dir / "logs"
+    worker_status = args.output_dir / "worker_status" / f"worker_{args.shard_index:03d}.json"
     if not args.dry_run:
-        for path in (videos, timings, logs):
+        for path in (videos, timings, logs, worker_status.parent):
             path.mkdir(parents=True, exist_ok=True)
         if args.condition == "seacache":
             traces.mkdir(parents=True, exist_ok=True)
@@ -135,10 +161,12 @@ def main() -> None:
             readme.write_text(
                 "# SeaCache4Wan22 Vbench200 generation artifacts\n\n"
                 "ID-named videos, inference-only timing traces, SeaCache decision "
-                "traces when enabled, and process logs.\n", encoding="utf-8",
+                "traces when enabled, per-sample logs, and persistent-worker status. "
+                "Each GPU loads WanT2V once and processes its shard sequentially.\n",
+                encoding="utf-8",
             )
     config = {
-        "schema": "seacache4wan22_vbench200_generation_v1", "condition": args.condition,
+        "schema": "seacache4wan22_vbench200_generation_v2", "condition": args.condition,
         "threshold": args.threshold, "use_ret_steps": args.use_ret_steps,
         "wan22_root": str(args.wan22_root),
         "prepared_manifest": str(prepared_manifest), "prepared_manifest_sha256": sha256(prepared_manifest),
@@ -150,66 +178,260 @@ def main() -> None:
             "guide_scale_low_high": [3.0, 4.0], "boundary": 0.875, "seed": 42,
             "dtype": "bfloat16", "offload_model": True, "t5_cpu": False,
         },
-        "shard_index": args.shard_index, "num_shards": args.num_shards, "thread_env": THREAD_ENV,
+        "shard_index": args.shard_index, "num_shards": args.num_shards,
+        "physical_gpu": args.physical_gpu,
+        "runner": {
+            "type": "persistent_batch_worker",
+            "persistent_pipeline": True,
+            "pipeline_initializations_per_worker": 1 if jobs else 0,
+            "sample_batch_size": 1,
+            "assigned_sample_count": len(jobs),
+            "profiler_lifecycle": "fresh_install_and_restore_per_sample",
+        },
+        "thread_env": THREAD_ENV,
     }
     if not args.dry_run:
         write_locked(args.output_dir / f"generation_config.shard_{args.shard_index:03d}.json", config, args.resume)
     manifest = args.output_dir / f"generation_manifest.shard_{args.shard_index:03d}.jsonl"
-    env = {**os.environ, **THREAD_ENV}
-    env["PYTHONPATH"] = str(args.wan22_root) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    if args.dry_run:
+        print(json.dumps({
+            "status": "dry_run",
+            "runner": config["runner"],
+            "assigned_sample_ids": [str(row["sample_id"]) for _, row in jobs],
+        }, ensure_ascii=False, indent=2))
+        return
+
+    visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if not visible_devices or "," in visible_devices:
+        raise ValueError(
+            "persistent worker requires exactly one CUDA_VISIBLE_DEVICES entry"
+        )
+    if args.physical_gpu is not None and visible_devices != args.physical_gpu:
+        raise ValueError(
+            f"--physical-gpu={args.physical_gpu} does not match "
+            f"CUDA_VISIBLE_DEVICES={visible_devices}"
+        )
+    physical_gpu = args.physical_gpu or visible_devices
+
+    sys.path.insert(0, str(args.wan22_root))
+    import torch
+    import wan
+    from wan.configs import SIZE_CONFIGS, WAN_CONFIGS
+    from wan.inference_timing import _PipelineProfiler
+    from wan.seacache import SeaCacheConfig
+    from wan.utils.utils import save_video
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] %(levelname)s: %(message)s",
+        handlers=[logging.StreamHandler(stream=sys.stdout)],
+    )
+    torch.cuda.set_device(0)
     completed = skipped = 0
-    for ordinal, sample in jobs:
-        sample_id = str(sample["sample_id"])
-        video, timing = videos / f"{sample_id}.mp4", timings / f"{sample_id}.json"
-        trace = traces / f"{sample_id}.json"
-        command = [
-            sys.executable, str(args.wan22_root / "generate.py"), "--task", "t2v-A14B",
-            "--size", "832*480", "--frame_num", "45", "--ckpt_dir", str(args.checkpoint_dir),
-            "--offload_model", "true", "--sample_solver", "dpm++", "--sample_steps", "50",
-            "--sample_shift", "12", "--base_seed", "42", "--convert_model_dtype",
-            "--timing_trace", str(timing), "--prompt", str(sample["prompt_en"]),
-            "--save_file", str(video), "--timestep_cache", "none",
-        ]
-        if args.condition == "seacache":
-            command[-1] = "seacache"
-            command.extend(["--seacache_threshold", str(args.threshold), "--seacache_trace", str(trace)])
-            if args.use_ret_steps:
-                command.append("--seacache_use_ret_steps")
-        if args.dry_run:
-            print(shlex.join(command))
-            continue
-        required = [video, timing] + ([trace] if args.condition == "seacache" else [])
-        expected_impl = "seacache" if args.condition == "seacache" else "wan22"
-        if any(path.exists() for path in required):
-            if args.resume and all(path.is_file() and path.stat().st_size > 0 for path in required):
-                read_timing(timing, expected_impl)
-                skipped += 1
-                continue
-            raise FileExistsError(f"incomplete or existing output for {sample_id}")
-        stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        log = logs / f"{sample_id}.{stamp}.log"
-        started = time.monotonic()
-        with log.open("x", encoding="utf-8") as handle:
-            handle.write(f"command: {shlex.join(command)}\n")
-            handle.flush()
-            result = subprocess.run(command, cwd=args.wan22_root, env=env, stdout=handle, stderr=subprocess.STDOUT, text=True)
-        if result.returncode:
-            raise subprocess.CalledProcessError(result.returncode, command)
-        if not video.is_file() or video.stat().st_size == 0:
-            raise RuntimeError(f"missing generated video: {video}")
-        timing_payload = read_timing(timing, expected_impl)
-        if args.condition == "seacache":
-            trace_payload = json.loads(trace.read_text(encoding="utf-8"))
-            if trace_payload.get("schema") != "seacache4wan22_trace_v1" or len(trace_payload.get("decisions", [])) != 50:
-                raise ValueError(f"invalid SeaCache trace: {trace}")
-        append_jsonl(manifest, {
-            "job_ordinal": ordinal, "sample_id": sample_id, "prompt_en": sample["prompt_en"], "seed": 42,
-            "video": str(video), "timing": str(timing), "trace": str(trace) if args.condition == "seacache" else None,
-            "log": str(log), "pipeline_generate_wall_seconds": timing_payload["pipeline_generate_wall_seconds"],
-            "process_wall_seconds": time.monotonic() - started,
+    runtime = {
+        "schema_version": 1,
+        "status": "initializing" if jobs else "complete",
+        "started_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "worker_index": args.shard_index,
+        "worker_count": args.num_shards,
+        "worker_pid": os.getpid(),
+        "physical_gpu": physical_gpu,
+        "cuda_visible_devices": visible_devices,
+        "persistent_pipeline": True,
+        "pipeline_initialization_count": 0,
+        "assigned_sample_ids": [str(row["sample_id"]) for _, row in jobs],
+        "completed_sample_count": 0,
+        "skipped_sample_count": 0,
+    }
+    atomic_json(worker_status, runtime)
+    if not jobs:
+        runtime["completed_utc"] = dt.datetime.now(dt.timezone.utc).isoformat()
+        atomic_json(worker_status, runtime)
+        print(json.dumps({"status": "complete", "assigned": 0, "completed": 0, "skipped": 0}, indent=2))
+        return
+
+    init_started = time.perf_counter()
+    pipeline = wan.WanT2V(
+        config=WAN_CONFIGS["t2v-A14B"],
+        checkpoint_dir=str(args.checkpoint_dir),
+        device_id=0,
+        rank=0,
+        t5_fsdp=False,
+        dit_fsdp=False,
+        use_sp=False,
+        t5_cpu=False,
+        convert_model_dtype=True,
+    )
+    torch.cuda.synchronize()
+    pipeline_init_wall_seconds = time.perf_counter() - init_started
+    runtime.update({
+        "status": "running",
+        "cuda_device_name": torch.cuda.get_device_name(0),
+        "pipeline_initialization_count": 1,
+        "pipeline_init_wall_seconds_once": pipeline_init_wall_seconds,
+    })
+    atomic_json(worker_status, runtime)
+    logging.info(
+        "Persistent WanT2V pipeline initialized once in %.3f seconds on physical GPU %s",
+        pipeline_init_wall_seconds,
+        physical_gpu,
+    )
+
+    manifest_ids: set[str] = set()
+    if manifest.is_file():
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                manifest_ids.add(str(json.loads(line)["sample_id"]))
+
+    try:
+        for ordinal, sample in jobs:
+            sample_id = str(sample["sample_id"])
+            video, timing = videos / f"{sample_id}.mp4", timings / f"{sample_id}.json"
+            trace = traces / f"{sample_id}.json"
+            required = [video, timing] + ([trace] if args.condition == "seacache" else [])
+            expected_impl = "seacache" if args.condition == "seacache" else "wan22"
+            if any(path.exists() for path in required):
+                if args.resume and all(path.is_file() and path.stat().st_size > 0 for path in required):
+                    read_timing(timing, expected_impl, require_persistent=True)
+                    if args.condition == "seacache":
+                        trace_payload = json.loads(trace.read_text(encoding="utf-8"))
+                        if trace_payload.get("schema") != "seacache4wan22_trace_v1" or len(trace_payload.get("decisions", [])) != 50:
+                            raise ValueError(f"invalid SeaCache trace: {trace}")
+                    skipped += 1
+                    runtime["skipped_sample_count"] = skipped
+                    atomic_json(worker_status, runtime)
+                    continue
+                raise FileExistsError(f"incomplete or existing output for {sample_id}")
+
+            stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            log = logs / f"{sample_id}.{stamp}.log"
+            runtime["current_sample_id"] = sample_id
+            atomic_json(worker_status, runtime)
+            logging.info(
+                "Generating sample=%s condition=%s prompt=%r",
+                sample_id,
+                args.condition,
+                sample["prompt_en"],
+            )
+            started = time.perf_counter()
+            profiler = _PipelineProfiler(
+                pipeline,
+                init_wall_seconds=0.0,
+                output_path=timing,
+                implementation=expected_impl,
+            )
+            profiler.install()
+            cache_config = (
+                SeaCacheConfig(
+                    threshold=float(args.threshold),
+                    trace_path=str(trace),
+                    use_ret_steps=args.use_ret_steps,
+                )
+                if args.condition == "seacache"
+                else None
+            )
+            generated = None
+            try:
+                generated = pipeline.generate(
+                    str(sample["prompt_en"]),
+                    size=SIZE_CONFIGS["832*480"],
+                    frame_num=45,
+                    shift=12.0,
+                    sample_solver="dpm++",
+                    sampling_steps=50,
+                    guide_scale=(3.0, 4.0),
+                    seed=42,
+                    offload_model=True,
+                    seacache_config=cache_config,
+                )
+                inference_finished = time.perf_counter()
+                export_started = time.perf_counter()
+                save_video(
+                    tensor=generated[None],
+                    save_file=str(video),
+                    fps=16,
+                    nrow=1,
+                    normalize=True,
+                    value_range=(-1, 1),
+                )
+                torch.cuda.synchronize()
+                export_finished = time.perf_counter()
+            finally:
+                if generated is not None:
+                    del generated
+                gc.collect()
+                torch.cuda.empty_cache()
+
+            if not video.is_file() or video.stat().st_size == 0:
+                raise RuntimeError(f"missing generated video: {video}")
+
+            timing_payload = json.loads(timing.read_text(encoding="utf-8"))
+            timing_payload["pipeline_lifecycle"] = {
+                "runner": "persistent_batch_worker",
+                "persistent_pipeline": True,
+                "worker_index": args.shard_index,
+                "physical_gpu": physical_gpu,
+                "pipeline_init_wall_seconds_once": pipeline_init_wall_seconds,
+                "pipeline_init_accounted_in_this_sample": False,
+                "profiler_freshly_installed_for_sample": True,
+            }
+            atomic_json(timing, timing_payload)
+            timing_payload = read_timing(timing, expected_impl, require_persistent=True)
+            if args.condition == "seacache":
+                trace_payload = json.loads(trace.read_text(encoding="utf-8"))
+                if trace_payload.get("schema") != "seacache4wan22_trace_v1" or len(trace_payload.get("decisions", [])) != 50:
+                    raise ValueError(f"invalid SeaCache trace: {trace}")
+
+            sample_payload = {
+                "status": "success",
+                "sample_id": sample_id,
+                "condition": args.condition,
+                "prompt_en": sample["prompt_en"],
+                "seed": 42,
+                "persistent_pipeline": True,
+                "shared_pipeline_init_wall_seconds_once": pipeline_init_wall_seconds,
+                "pipeline_generate_wall_seconds": timing_payload["pipeline_generate_wall_seconds"],
+                "generation_call_wall_seconds_observed_by_worker": inference_finished - started,
+                "video_export_wall_seconds": export_finished - export_started,
+                "sample_wall_seconds_including_export": export_finished - started,
+                "video": str(video),
+                "timing": str(timing),
+                "trace": str(trace) if args.condition == "seacache" else None,
+            }
+            log.write_text(json.dumps(sample_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            if sample_id not in manifest_ids:
+                append_jsonl(manifest, {
+                    "job_ordinal": ordinal,
+                    **sample_payload,
+                    "log": str(log),
+                    "process_wall_seconds": export_finished - started,
+                })
+                manifest_ids.add(sample_id)
+            completed += 1
+            runtime.update({
+                "completed_sample_count": completed,
+                "last_completed_sample_id": sample_id,
+                "last_completed_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+            })
+            runtime.pop("current_sample_id", None)
+            atomic_json(worker_status, runtime)
+            logging.info("Completed sample=%s", sample_id)
+    except BaseException as exc:
+        runtime.update({
+            "status": "failed",
+            "error": repr(exc),
+            "failed_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
         })
-        completed += 1
-    print(json.dumps({"status": "dry_run" if args.dry_run else "complete", "assigned": len(jobs), "completed": completed, "skipped": skipped}, indent=2))
+        atomic_json(worker_status, runtime)
+        raise
+
+    runtime.update({
+        "status": "complete",
+        "completed_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+    })
+    runtime.pop("current_sample_id", None)
+    atomic_json(worker_status, runtime)
+    print(json.dumps({"status": "complete", "assigned": len(jobs), "completed": completed, "skipped": skipped}, indent=2))
 
 
 if __name__ == "__main__":

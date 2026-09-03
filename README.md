@@ -31,6 +31,13 @@ and internal session logs are intentionally excluded from version control.
 Each tool documents how to obtain its external resources and choose an output
 directory.
 
+## 统一运行环境
+
+本仓库所有模型与评测链路统一使用 conda 环境 `wan2.2`。`Wan2.1` 仅表示
+模型、源码仓库或方法适配版本，不是 Python/conda 环境名；运行脚本前应使用
+`conda activate wan2.2`，或令 `WAN22_PYTHON` 指向该环境的 Python。项目不得
+调用或依赖名为 `Wan2.1` 的残留环境。
+
 No repository-wide license has been selected yet. Component-level upstream
 attribution and version locks are recorded in their respective `NOTICE.md` and
 `upstream_lock.json` files.

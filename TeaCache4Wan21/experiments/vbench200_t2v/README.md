@@ -23,7 +23,7 @@ TeaCache，避免两个 condition 争抢同一 GPU。每条视频都通过独立
 ## 一条命令运行
 
 ```bash
-python_bin=/path/to/Wan2.1/bin/python
+python_bin=/path/to/wan2.2/bin/python
 result_root=/all/yiran07-disk3/huteng_data/exp/teacache_wan21_vbench200_threshold_0p08
 
 "$python_bin" run_vbench200_4gpu.py \
@@ -39,7 +39,7 @@ T2V-1.3B 官方无 retention steps 的参考值为 slow `0.05`、fast `0.08`。
 若需要复现官方 retention 版本，可额外传 `--use-ret-steps`（官方 fast 参考阈值
 为 `0.10`）。正式结果目录应把阈值写进名称，避免不同配置互相覆盖。
 
-生成与 Calflops profile 使用 Wan2.1 Python。质量评测 Python 必须能
+生成与 Calflops profile 使用项目统一的 `wan2.2` 环境 Python。质量评测 Python 必须能
 导入 `torch`、`lpips`，VBench Python 必须能导入 `torch`、`vbench`；启动器在正式
 评测前会主动检查。VBench 权重和 LPIPS cache 默认读取本工作区的
 `models/VBench/` 与 `models/torch-cache/`，也可用对应命令行参数覆盖。

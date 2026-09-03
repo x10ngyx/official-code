@@ -17,9 +17,10 @@ source is outside `offical-code/`.
 
 The following large or environment-specific inputs remain external:
 
-1. A working Python/CUDA environment for Wan2.1. Install the shared metric and
-   Calflops requirements when they are not already present. LPIPS is locked to
-   `0.1.4`.
+1. The project-wide `wan2.2` conda environment with working Python/CUDA.
+   `Wan2.1` below names the model/source version only, never an environment.
+   Install the shared metric and Calflops requirements when they are not
+   already present. LPIPS is locked to `0.1.4`.
 2. The Wan2.1 source tree at commit
    `65386b2e03c490796eede31b0325a6a595cc684e`. Four compatibility file hashes
    from `Ours4Wan21/upstream_lock.json` are checked before every GPU phase.
@@ -45,13 +46,13 @@ On the remote machine:
 
 ```bash
 cd /path/offical-code
-conda run --no-capture-output -n Wan2.1 python -m pip install \
+conda run --no-capture-output -n wan2.2 python -m pip install \
   -r VideoMetrics/requirements.txt -r CalflopsEvaluation/requirements.txt
 cd Ours4Wan21/data_collection
 export PYTHONPATH="$PWD/src:$PWD/../../VideoMetrics:$PWD/../../CalflopsEvaluation${PYTHONPATH:+:$PYTHONPATH}"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
-conda run --no-capture-output -n Wan2.1 python -m ours4wan21_data.preflight --phase package
-conda run --no-capture-output -n Wan2.1 python -m unittest discover -s tests -v
+conda run --no-capture-output -n wan2.2 python -m ours4wan21_data.preflight --phase package
+conda run --no-capture-output -n wan2.2 python -m unittest discover -s tests -v
 ```
 
 Preflight must report the expected `offical-code/` root, prompt SHA256
@@ -69,8 +70,8 @@ export METRICS_MODEL_CACHE=/remote/models/torch-cache
 # Optional: auto selects the worker's visible CUDA device; CPU is supported.
 export METRICS_DEVICE=auto
 export LPIPS_BATCH_SIZE=8
-# Optional when not using Conda env Wan2.1:
-# export WAN21_PYTHON=/absolute/path/to/python
+# Optional explicit interpreter override; it must be the wan2.2 environment Python:
+# export WAN22_PYTHON=/absolute/path/to/wan2.2/bin/python
 ```
 
 ## Phase order

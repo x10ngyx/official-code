@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Any, Sequence
 
@@ -31,6 +32,66 @@ class VAEDecodeProfile(nn.Module):
     def forward(self, latent: torch.Tensor) -> Any:
         with torch.no_grad():
             return self.model.decode(latent, self.scale)
+
+
+def _calflops_upsample_flops_compute(*args: Any, **kwargs: Any) -> tuple[int, int]:
+    """Count one operation per interpolation output element.
+
+    Calflops 0.3.2 attempts ``tuple ** input_batch_size`` for the tuple-valued
+    scale factor used by Wan's VAE and crashes before producing a profile.  The
+    replacement follows PyTorch's spatial interpolation shape semantics and
+    retains Calflops' intended one-operation-per-output-element convention.
+    """
+
+    if not args or not torch.is_tensor(args[0]):
+        raise TypeError("upsample FLOPs counting requires a tensor input")
+    input_tensor = args[0]
+    spatial_dims = input_tensor.ndim - 2
+    if spatial_dims < 1:
+        raise ValueError("upsample input must have batch, channel, and spatial dims")
+
+    size = kwargs.get("size", args[1] if len(args) > 1 else None)
+    if size is not None:
+        output_size = (size,) if isinstance(size, int) else tuple(size)
+        if len(output_size) != spatial_dims:
+            raise ValueError(
+                f"upsample size has {len(output_size)} dims; expected {spatial_dims}"
+            )
+    else:
+        scale_factor = kwargs.get(
+            "scale_factor", args[2] if len(args) > 2 else None
+        )
+        if scale_factor is None:
+            raise ValueError("either size or scale_factor must be defined")
+        factors = (
+            (float(scale_factor),) * spatial_dims
+            if isinstance(scale_factor, (int, float))
+            else tuple(float(value) for value in scale_factor)
+        )
+        if len(factors) != spatial_dims:
+            raise ValueError(
+                f"upsample scale_factor has {len(factors)} dims; expected {spatial_dims}"
+            )
+        output_size = tuple(
+            math.floor(int(input_tensor.shape[axis + 2]) * factor)
+            for axis, factor in enumerate(factors)
+        )
+    if any(int(value) < 1 for value in output_size):
+        raise ValueError(f"invalid upsample output size: {output_size}")
+    output_elements = (
+        int(input_tensor.shape[0])
+        * int(input_tensor.shape[1])
+        * math.prod(int(value) for value in output_size)
+    )
+    return output_elements, 0
+
+
+def _install_calflops_upsample_compatibility() -> None:
+    """Install the locked Calflops 0.3.2 tuple-scale compatibility hook."""
+
+    from calflops import pytorch_ops
+
+    pytorch_ops._upsample_flops_compute = _calflops_upsample_flops_compute
 
 
 def _calculate(
@@ -96,6 +157,7 @@ def profile_vae_decode(
 ) -> dict[str, Any]:
     if len(latent_shape) != 5 or any(int(value) < 1 for value in latent_shape):
         raise ValueError("latent_shape must contain five positive dimensions")
+    _install_calflops_upsample_compatibility()
     wrapper = VAEDecodeProfile(model, scale).to(device)
     latent = torch.zeros(latent_shape, dtype=torch.float32, device=device)
     per_call = _calculate(wrapper, (latent,), calculate_flops_fn)
@@ -103,6 +165,14 @@ def profile_vae_decode(
         "scope": "Wan VAE model.decode for one output video",
         "input_latent_shape_bcfhw": list(latent_shape),
         "calls_per_video": 1,
+        "calflops_compatibility": {
+            "patch_id": "calflops_0.3.2_tuple_upsample_v1",
+            "reason": (
+                "Calflops 0.3.2 raises TypeError for Wan VAE tuple-valued "
+                "scale_factor"
+            ),
+            "counting_formula": "one FLOP per interpolation output element",
+        },
         "per_call": per_call,
         "estimated_flops_per_video": per_call["flops"],
         "estimated_tflops_per_video": per_call["tflops"],
@@ -130,6 +200,7 @@ def validate_component_profiles(payload: Any) -> dict[str, Any]:
 
 __all__ = [
     "TFLOP_DIVISOR",
+    "_calflops_upsample_flops_compute",
     "profile_t5",
     "profile_vae_decode",
     "validate_component_profiles",

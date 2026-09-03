@@ -30,11 +30,14 @@ VBench score 使用 `VbenchEvaluation/` 的 Vbench200 子集协议，不使用 T
 - `experiment_results/`：外部实验结果索引；大文件不得保存在代码目录。
 - `PROGRESS.md`、`logs/`：本地状态面板和精炼交接记录。
 
-## 上游环境
+## 统一环境与上游源码
 
-官方 TeaCache 文件依赖 Wan2.1 源码树。本复现将兼容版本固定为 Wan2.1 初始提交：
+本项目所有命令统一使用 conda 环境 `wan2.2`；`Wan2.1` 只表示模型或源码
+版本，不是环境名。官方 TeaCache 文件依赖 Wan2.1 源码树，本复现将兼容版本固定为
+Wan2.1 初始提交：
 
 ```bash
+conda activate wan2.2
 git clone https://github.com/Wan-Video/Wan2.1.git /path/to/Wan2.1
 git -C /path/to/Wan2.1 checkout 65386b2e03c490796eede31b0325a6a595cc684e
 cd /path/to/Wan2.1
@@ -42,7 +45,9 @@ pip install -r requirements.txt
 ```
 
 Wan2.1 官方要求 PyTorch 2.4.0 或更高版本。模型权重仍放在工作区统一的
-`models/` 目录中，不复制进本项目。运行前验证源码：
+`models/` 目录中，不复制进本项目。`run_wan21.sh` 默认通过
+`conda run -n wan2.2` 执行；也可令 `WAN22_PYTHON` 指向该环境的 Python。
+运行前验证源码：
 
 ```bash
 python validate_reproduction.py --wan21-root /path/to/Wan2.1

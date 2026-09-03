@@ -17,5 +17,13 @@ cd "$project_dir"
   scripts/validate_prepared_tree.py scripts/write_run_manifest.py \
   scripts/compare_runs.py \
   experiments/performance_t2v_a14b/profile_calflops.py \
-  experiments/performance_t2v_a14b/aggregate_performance.py
-bash -n scripts/prepare_wan22.sh scripts/run_t2v_a14b.sh
+  experiments/performance_t2v_a14b/aggregate_performance.py \
+  experiments/vbench200_t2v/generate_vbench200.py \
+  experiments/vbench200_t2v/profile_calflops.py \
+  experiments/vbench200_t2v/aggregate_performance.py \
+  experiments/vbench200_t2v/evaluate_results.py \
+  experiments/vbench200_t2v/build_final_report.py \
+  experiments/vbench200_t2v/run_vbench200.py
+bash -n \
+  scripts/prepare_wan22.sh scripts/run_t2v_a14b.sh \
+  experiments/vbench200_t2v/launch_threshold_suite_024_038_055.sh

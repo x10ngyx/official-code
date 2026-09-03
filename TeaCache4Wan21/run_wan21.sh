@@ -10,7 +10,16 @@ wan21_root=$(readlink -f "$1")
 shift
 project_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 expected_commit=65386b2e03c490796eede31b0325a6a595cc684e
-python_bin=${WAN21_PYTHON:-python}
+if [[ -n ${WAN22_PYTHON:-} ]]; then
+  python_cmd=("$WAN22_PYTHON")
+else
+  conda_bin=${CONDA_BIN:-$(command -v conda || true)}
+  if [[ -z $conda_bin ]]; then
+    echo "conda is unavailable; set WAN22_PYTHON to the wan2.2 environment Python" >&2
+    exit 2
+  fi
+  python_cmd=("$conda_bin" run --no-capture-output -n wan2.2 python)
+fi
 
 if [[ ! -f "$wan21_root/wan/__init__.py" || ! -f "$wan21_root/generate.py" ]]; then
   echo "not a Wan2.1 source tree: $wan21_root" >&2
@@ -38,4 +47,4 @@ export OPENBLAS_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
-exec "$python_bin" "$project_dir/generate.py" "$@"
+exec "${python_cmd[@]}" "$project_dir/generate.py" "$@"

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import subprocess
@@ -24,6 +25,51 @@ def sha256(path: Path) -> str:
 
 def git(root: Path, *args: str) -> str:
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
+
+
+def _class_method(tree: ast.AST, class_name: str, method_name: str) -> ast.FunctionDef:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == class_name:
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef) and child.name == method_name:
+                    return child
+    raise ValueError(f"missing {class_name}.{method_name}")
+
+
+def _call_targets(node: ast.AST) -> set[str]:
+    return {
+        ast.unparse(call.func)
+        for call in ast.walk(node)
+        if isinstance(call, ast.Call)
+    }
+
+
+def validate_prepared_model_contract(model_path: Path) -> dict[str, bool]:
+    """Require the behavior-reference modulation helper on both execution paths."""
+    tree = ast.parse(model_path.read_text(encoding="utf-8"), filename=str(model_path))
+    helper = _class_method(tree, "WanAttentionBlock", "_modulated_norm1")
+    if [argument.arg for argument in helper.args.args] != ["self", "x", "e"]:
+        raise ValueError("WanAttentionBlock._modulated_norm1 has an unexpected signature")
+    returns = [node for node in helper.body if isinstance(node, ast.Return)]
+    expected = ast.parse(
+        "self.norm1(x).float() * (1 + e[1].squeeze(2)) + e[0].squeeze(2)",
+        mode="eval",
+    ).body
+    if len(returns) != 1 or ast.dump(returns[0].value) != ast.dump(expected):
+        raise ValueError("WanAttentionBlock._modulated_norm1 differs from work/Wan2.2")
+
+    block_forward = _class_method(tree, "WanAttentionBlock", "forward")
+    if "self._modulated_norm1" not in _call_targets(block_forward):
+        raise ValueError("WanAttentionBlock.forward bypasses _modulated_norm1")
+
+    model_forward = _class_method(tree, "WanModel", "forward")
+    if "self.blocks[0]._modulated_norm1" not in _call_targets(model_forward):
+        raise ValueError("WanModel SeaCache feature path bypasses _modulated_norm1")
+    return {
+        "modulated_norm1_matches_reference": True,
+        "block_forward_uses_modulated_norm1": True,
+        "seacache_feature_uses_modulated_norm1": True,
+    }
 
 
 def main() -> None:
@@ -58,6 +104,7 @@ def main() -> None:
         ("patch", "patch_sha256"),
         ("runtime", "runtime_sha256"),
         ("timing_runtime", "timing_runtime_sha256"),
+        ("component_timing", "component_timing_sha256"),
         ("protocol", "protocol_sha256"),
     ):
         path = PROJECT / integration[path_key]
@@ -66,6 +113,7 @@ def main() -> None:
 
     forbidden = ("block_cache", "cfg_cache", "zeustimestep", "teacache")
     found = []
+    prepared_model_contract = None
     if args.mode == "prepared":
         active_paths = [source / relative for relative in expected]
         active_text = "\n".join(
@@ -76,6 +124,9 @@ def main() -> None:
         found = [marker for marker in forbidden if marker in active_text]
         if found:
             raise ValueError(f"forbidden cache implementation markers found: {found}")
+        prepared_model_contract = validate_prepared_model_contract(
+            source / "wan" / "modules" / "model.py"
+        )
 
     payload = {
         "schema": "seacache4wan22_prepared_v1",
@@ -85,6 +136,7 @@ def main() -> None:
         "wan22_commit": LOCK["wan22"]["commit"],
         "sha256": observed,
         "forbidden_cache_markers": found,
+        "prepared_model_contract": prepared_model_contract,
         "patch_sha256": integration["patch_sha256"],
         "runtime_sha256": integration["runtime_sha256"],
         "timing_runtime_sha256": integration["timing_runtime_sha256"],
@@ -95,6 +147,7 @@ def main() -> None:
                 "patch_sha256",
                 "runtime_sha256",
                 "timing_runtime_sha256",
+                "component_timing_sha256",
                 "protocol_sha256",
             )
         },

@@ -73,7 +73,7 @@ else
 fi
 
 export CUDA_VISIBLE_DEVICES="$gpu_index"
-export WAN21_PYTHON="$python_bin"
+export WAN22_PYTHON="$python_bin"
 export PATH="$env_root/bin:$PATH"
 export OPENBLAS_NUM_THREADS=1
 export OMP_NUM_THREADS=1

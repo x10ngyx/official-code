@@ -55,12 +55,16 @@ python validate_reproduction.py --seacache-root /path/to/SeaCache
 Model weights stay under the workspace `models/` root and are not copied into
 this repository.
 
+All commands use the project-wide conda environment `wan2.2`. Here and below,
+`Wan2.1` names only the locked model/source version. Activate `wan2.2`, or set
+`WAN22_PYTHON` to that environment's Python.
+
 ## Run
 
 No-cache baseline:
 
 ```bash
-WAN21_PYTHON=/path/to/python bash run_wan21.sh /path/to/Wan2.1 \
+WAN22_PYTHON=/path/to/wan2.2/bin/python bash run_wan21.sh /path/to/Wan2.1 \
   --task t2v-1.3B --size '832*480' --frame_num 81 \
   --sample_steps 50 --sample_solver unipc --sample_shift 5 \
   --sample_guide_scale 5 --base_seed 42 --offload_model False \
@@ -73,7 +77,7 @@ WAN21_PYTHON=/path/to/python bash run_wan21.sh /path/to/Wan2.1 \
 SeaCache candidate:
 
 ```bash
-WAN21_PYTHON=/path/to/python bash run_wan21.sh /path/to/Wan2.1 \
+WAN22_PYTHON=/path/to/wan2.2/bin/python bash run_wan21.sh /path/to/Wan2.1 \
   --enable_seacache --seacache_thresh 0.20 \
   --seacache_trace /path/to/results/seacache.trace.json \
   --timing_json /path/to/results/seacache.timing.json \

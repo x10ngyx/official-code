@@ -6,15 +6,15 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 data_project=$(cd "$script_dir/../.." && pwd)
 official_code=$(cd "$data_project/../.." && pwd)
 
-if [[ -n ${WAN21_PYTHON:-} ]]; then
-  python_cmd=("$WAN21_PYTHON")
+if [[ -n ${WAN22_PYTHON:-} ]]; then
+  python_cmd=("$WAN22_PYTHON")
 else
   conda_bin=${CONDA_BIN:-$(command -v conda || true)}
   if [[ -z $conda_bin ]]; then
-    echo "conda is unavailable; set WAN21_PYTHON or CONDA_BIN" >&2
+    echo "conda is unavailable; set WAN22_PYTHON to the wan2.2 environment Python or set CONDA_BIN" >&2
     exit 2
   fi
-  python_cmd=("$conda_bin" run --no-capture-output -n Wan2.1 python)
+  python_cmd=("$conda_bin" run --no-capture-output -n wan2.2 python)
 fi
 
 exp_base=${EXP_BASE:-/all/yiran07-disk3/huteng_data/exp}
@@ -49,7 +49,7 @@ export OURS4WAN21_EXP_BASE=$exp_base
 export PYTHONPATH=$data_project/src:$official_code/VideoMetrics:$official_code/CalflopsEvaluation${PYTHONPATH:+:$PYTHONPATH}
 
 if [[ ! -x ${python_cmd[0]} ]]; then
-  echo "Wan2.1 Python/Conda launcher is not executable: ${python_cmd[0]}" >&2
+  echo "wan2.2 Python/Conda launcher is not executable: ${python_cmd[0]}" >&2
   exit 2
 fi
 
