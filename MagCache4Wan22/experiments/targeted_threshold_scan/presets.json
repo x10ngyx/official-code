@@ -1,0 +1,28 @@
+{
+  "schema": "magcache4wan22_target_presets_v1",
+  "relative_tolerance": 0.02,
+  "status": "unmeasured_starting_points",
+  "targets": [
+    {
+      "target_speedup": 1.8,
+      "retention_ratio": 0.2,
+      "K": 2,
+      "recommended_threshold": 0.075,
+      "threshold_range": {"start": 0.06, "stop": 0.09, "step": 0.001}
+    },
+    {
+      "target_speedup": 2.4,
+      "retention_ratio": 0.2,
+      "K": 4,
+      "recommended_threshold": 0.386,
+      "threshold_range": {"start": 0.18, "stop": 0.42, "step": 0.001}
+    },
+    {
+      "target_speedup": 3.0,
+      "retention_ratio": 0.1,
+      "K": 5,
+      "recommended_threshold": 0.2,
+      "threshold_range": {"start": 0.18, "stop": 0.22, "step": 0.001}
+    }
+  ]
+}

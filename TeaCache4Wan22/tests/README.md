@@ -1,6 +1,7 @@
 # Tests
 
 Run the CPU-only controller, per-forward timing, trace-weighted performance,
+Calflops tuple-upsample compatibility, cross-method baseline reuse contract,
 threshold-scan planning/target selection, manifest/speedup integration,
 syntax, and shell checks with:
 

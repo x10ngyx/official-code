@@ -1,5 +1,11 @@
 # Remote deployment
 
+**Current handoff:** the user reports that the remote random pipeline has already
+completed 3000 trajectories. Continue from [the parent README, section 3](../README.md#3-原样冻结已经完成的3000条再准备训练cache):
+freeze all existing completions with `--strategy all-completed`, then build the
+training cache. The original 9000-candidate collection plan is not a prerequisite.
+Remote completion files have not been independently inspected in this session.
+
 The transfer unit is the complete `work/offical-code/` tree, not this
 `data_collection/` directory alone. The collection project intentionally uses
 these shared resources after transfer:
@@ -109,3 +115,7 @@ bash experiments/seacache_threshold_collection_v1/launch_4gpu.sh finalize
 This path is runnable immediately after manifest creation: it samples 1,000
 prompts and three distinct values per prompt from the frozen nine-threshold
 Wan2.2 grid, producing 1,000 baselines and 3,000 candidates.
+
+## Collection → offline RL → Vbench200
+
+The complete remote workflow is now documented in `../README.md`: configure `OURS4WAN21_WORKSPACE`/`OURS4WAN21_EXP_BASE`, freeze the existing 3000 completed random trajectories with `select_data.py --strategy all-completed` (no resampling; no need to finish a larger 9000-row plan), build scalar training caches with the original train/val/test split, train 400 epochs, run post300 checkpoint selection/metric analysis, then run matched Vbench200 generation and predictor-overhead/quality evaluation. Do not use the fixed-threshold 3000 candidates as the random training subset.

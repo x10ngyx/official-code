@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "wan22": {
+    "repository": "https://github.com/Wan-Video/Wan2.2.git",
+    "commit": "42bf4cfaa384bc21833865abc2f9e6c0e67233dc",
+    "license": "Apache-2.0",
+    "original_file_sha256": {
+      "generate.py": "cae024b99a3d105fe273a8dfe724ea656f9c1a876ccc8534a8c2fbfb716950e7",
+      "wan/text2video.py": "2f212e1f6d7ba4408a25998091b70ee35dde8bcaaeaedd3ba03d6cdab84dc683",
+      "wan/modules/model.py": "8b39115298ca7322806c19b3165b3f435a94fe4a58f0624aec24f8e7f4997432"
+    }
+  },
+  "dicache": {
+    "repository": "https://github.com/Bujiazi/DiCache.git",
+    "commit": "fdbe20b669c9174bbed5ec994de073fd881c8010",
+    "source": "vendor/run_wan_dicache.py",
+    "source_sha256": "49edfa4033d1af2983a6db07354d87b142cacdf232566bb37a2c2b7b7853ed04"
+  },
+  "package_file_sha256": {
+    "../CalflopsEvaluation/calflops_eval/__init__.py": "01210ca09d0c95355db57aa62571185f94eb2b39028e131938d1c372f4a4dd94",
+    "../CalflopsEvaluation/calflops_eval/__main__.py": "c2ee4ddb093c9af060cafaf68219907f8a6b7b301ed3f8bea75db7555adec987",
+    "../CalflopsEvaluation/calflops_eval/adapters.py": "6f396d780f4e3682d8f4f8f9c782b5bab1372a4fc1d53237e7a336c5809ffa4e",
+    "../CalflopsEvaluation/calflops_eval/aggregation.py": "e46803f17b9d706f38859afc6b110b2c4e2d15491a9d369fd5fadaa5f5860787",
+    "../CalflopsEvaluation/calflops_eval/cli.py": "c6b0b4a2ffbd44ecdda023a28e2c83c180a80b20e26a5f302a09c5b56be35650",
+    "../CalflopsEvaluation/calflops_eval/manual_ops.py": "2ae835ea46452f5818224fcccbc1ec1e7f130b9b2cffa11cb1cad01a22781daa",
+    "../CalflopsEvaluation/calflops_eval/models.py": "4907f82058e6948e403af06b4791723c07f36abb30dc30ac5afaa141da6db48a",
+    "../CalflopsEvaluation/calflops_eval/profiling.py": "9e1655d7221f76bfa510114a474f228b8d63a31723d05f17c5a0e6b5cc96ad7a",
+    "../ComponentMetrics/component_flops.py": "859dc818a922fe61c23d82571d8329cbaa338e41ef1adf5d7a33ac237753a067",
+    "../ComponentMetrics/component_timing.py": "24b4953c2d5c1059ab29be9f0796401ad4ab93eb24aa8606ab3f7297a5f724fe",
+    "../ComponentMetrics/reporting.py": "d98110b8a2b6c03f331a490c295d53a40ce200d583203b9eac62c6789231ea65",
+    "configs/wan22_t2v_a14b_50step_dpmpp.json": "e602436eb355b3baad56a7c53d5d274a5ada3d0f794689742f9868f74ff8ebbc",
+    "experiments/paired_benchmark/run_benchmark.py": "b627b154ce8c3e2859477763659cfa1f144da1bc3d1e5ed3edd847c6759b7276",
+    "experiments/parameter_scan/prompts.jsonl": "80a0549bfb62c7438e0cbea7dcd714596e128f8bd1343a4e98f18bbd641b60a8",
+    "experiments/parameter_scan/run_scan.py": "47672d9d2066c2e69831c381393b368e48225150c2cbc9ed8f59a6ad9785a813",
+    "experiments/parameter_scan/run_scan.sh": "c9aa547676e7b1ab2775436958834ae7601d16ae7a5965382366ce6f0a5f0674",
+    "experiments/performance_t2v_a14b/aggregate_performance.py": "061ce0b1173811c1f9127f7c3e07914d89bee9c4c262001ba70bd56278c794c0",
+    "experiments/performance_t2v_a14b/profile_calflops.py": "2c06351335fe703badbfdccea4960f57ad2148d3cf2e97e0525ffe8726f86aeb",
+    "experiments/smoke_official_core/run_smoke.py": "8070fb3ac983a17a4cde5f9e07cb1f2b6bbb48b904f22b188d75a4c0a4c374c3",
+    "experiments/speedrange_gpu123/presets.json": "0b3d816e8daf9f9ecc9dfb60a6bc066e5990f0a78fcbabe243550973f81e35ca",
+    "experiments/speedrange_gpu123/run_scan.sh": "d585d186a253aabb9fb3d71b11605ff8e71d5bf83650b4c28d09501bd33d418f",
+    "experiments/targeted_threshold_scan/presets.json": "a5381deaade31632a42811aa611e9ebbc2764b1e7e2c244aea0f217fb51645f8",
+    "experiments/targeted_threshold_scan/run_scan.py": "7e4c11f45324e648f5edddbf0cc5d5caa5c91c79dd0887cdc301750c1a050ef6",
+    "experiments/targeted_threshold_scan/run_scan.sh": "c9aa547676e7b1ab2775436958834ae7601d16ae7a5965382366ce6f0a5f0674",
+    "experiments/vbench200_t2v/generate_vbench200.py": "756013e065d9b778432bb273c925b88eaaa10189797cda1ccaddc23b4a3a93b4",
+    "experiments/vbench200_t2v/run_vbench200.py": "6fac18381dd94facd07171f6b7c163701a652c34a09cdbb24eb7a93a990da4ac",
+    "experiments/vbench200_t2v/run_vbench200.sh": "8ba2c6b5722c08dc5bf9d1cd65438a82939cd988314f5bc85a62b4d0844843d8",
+    "runtime/batch.py": "c0c2eaa0ebc5d3282b0166661f92cd83c5682619c8f9dd2554d3d5adc2a3b1b9",
+    "runtime/common.py": "89ad4253bc83a9a7a38b7b24e53ccbae3909ecd1cce082ada0806067de64443c",
+    "runtime/generation.py": "d32e52cf04ff2a62cb8fa32e31f50696cdbd8f01e47aafa80a3556e3082b5946",
+    "runtime/inference_timing.py": "2ddbd59c79d86d216e96f317a11c5b31d9f830b4ad355b145186e1215fad2cc0",
+    "runtime/official.py": "96e21f2c77ec3edc5836036b0723bcc55562e5944586349d11be0f444b4aff1d",
+    "runtime/prompts.py": "5718ee6495194b20eff37ffb8fe1b02df1bd36f5a87ad6415ee9970dd3cee784",
+    "runtime/scan.py": "9f56685fea0829804ce46a8f944f3179307ffa3c276fec4083044a5915a3b219",
+    "runtime/suite.py": "d80110fc3168b346dbcf6064acc7aa3c02b40a9fe1ecae89d950ff0aa422afd2",
+    "scripts/audit_baseline.py": "d3a02865393db0ea710f9100d55ac7a3fd5f1fcb924a9022bb83a90ef1dabcba",
+    "scripts/prepare_wan22.sh": "f432b85f30f42dbdaf4e9061ff40828af772bd4cd41499d8edfe38d685f2cc9e",
+    "scripts/run_t2v_a14b.py": "c740f7d2b397491f7e6329a9518e5a82ba6a55ec1cca6a24dadc37a32ecb152a",
+    "scripts/run_t2v_a14b.sh": "4fd92aacf140795238973afaf307939e1547007fd9f89bed1fba33b37e1b7584",
+    "scripts/validate_source.py": "e89d67cf4e4b643e10084efac1938118af6049f1834cd45acf806eb03cf6040e",
+    "vendor/run_wan_dicache.py": "49edfa4033d1af2983a6db07354d87b142cacdf232566bb37a2c2b7b7853ed04"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "wan22": {
+    "repository": "https://github.com/Wan-Video/Wan2.2.git",
+    "commit": "42bf4cfaa384bc21833865abc2f9e6c0e67233dc",
+    "license": "Apache-2.0",
+    "original_file_sha256": {
+      "generate.py": "cae024b99a3d105fe273a8dfe724ea656f9c1a876ccc8534a8c2fbfb716950e7",
+      "wan/text2video.py": "2f212e1f6d7ba4408a25998091b70ee35dde8bcaaeaedd3ba03d6cdab84dc683",
+      "wan/modules/model.py": "8b39115298ca7322806c19b3165b3f435a94fe4a58f0624aec24f8e7f4997432"
+    }
+  },
+  "magcache": {
+    "repository": "https://github.com/Zehong-Ma/MagCache.git",
+    "commit": "df81cb181776c2c61477c08e1d21f87fda1cd938",
+    "license": "Apache-2.0",
+    "source": "vendor/magcache_generate.py",
+    "source_sha256": "9455858d01a7ed55f6e6ba97358354f34ba9f0f5a8d03a967d9abb42d0c3d10d"
+  },
+  "package_file_sha256": {
+    "../ComponentMetrics/component_timing.py": "24b4953c2d5c1059ab29be9f0796401ad4ab93eb24aa8606ab3f7297a5f724fe",
+    "configs/wan22_t2v_a14b_50step_dpmpp.json": "501ad1a92bccf90461d06ab551e1858681b5c720af9a5e4e08dffec946bc9c1a",
+    "experiments/paired_benchmark/run_benchmark.py": "b627b154ce8c3e2859477763659cfa1f144da1bc3d1e5ed3edd847c6759b7276",
+    "experiments/parameter_scan/prompts.jsonl": "80a0549bfb62c7438e0cbea7dcd714596e128f8bd1343a4e98f18bbd641b60a8",
+    "experiments/parameter_scan/run_scan.py": "2bda145ef8a24c4c50d8e472b4d130d17ea143d8761479a810263e06ab924efa",
+    "experiments/parameter_scan/run_scan.sh": "c9aa547676e7b1ab2775436958834ae7601d16ae7a5965382366ce6f0a5f0674",
+    "experiments/performance_t2v_a14b/aggregate_performance.py": "5dc7e9be9812bd1b1b42b75981854d746b248d36796cdf23ddac5dead04161e5",
+    "experiments/performance_t2v_a14b/profile_calflops.py": "ff7bdae09271e868cbd51d00eb683017a6bd07f54df1f0eab48cfa5215a14cea",
+    "experiments/smoke_official_core/run_smoke.py": "4b7cb56636df16d8cb5804f1d2bacc1d90697efd81cd32b1c5bd9b71c06f3054",
+    "experiments/targeted_threshold_scan/presets.json": "c08d4e503662063b1b71e07c240880708041ffc065d44c57457b48bbe9ca8ff6",
+    "experiments/targeted_threshold_scan/run_gpu123.py": "a843a424268ea5561930cd9fa1781f08fdf8d027624a872eaa73e2d31e46ffde",
+    "experiments/targeted_threshold_scan/run_scan.py": "bf64eab1b5e00718cfd9a03b57bfd86cb6681738fcbc53937985c97568031099",
+    "experiments/targeted_threshold_scan/run_scan.sh": "c9aa547676e7b1ab2775436958834ae7601d16ae7a5965382366ce6f0a5f0674",
+    "experiments/vbench200_t2v/generate_vbench200.py": "756013e065d9b778432bb273c925b88eaaa10189797cda1ccaddc23b4a3a93b4",
+    "experiments/vbench200_t2v/run_vbench200.py": "6fac18381dd94facd07171f6b7c163701a652c34a09cdbb24eb7a93a990da4ac",
+    "experiments/vbench200_t2v/run_vbench200.sh": "8ba2c6b5722c08dc5bf9d1cd65438a82939cd988314f5bc85a62b4d0844843d8",
+    "runtime/batch.py": "073248aac04d8b162166b80fafd4c8d65f40f2037795bf178078cdf4eb301323",
+    "runtime/common.py": "71fac5e76501349134cd5904600c2e2b3d8c6e6b721e1168fe3eaa8f18852647",
+    "runtime/generation.py": "c3df0854c621d80e5a4cedf647cd6c07d5ff880c781fd5881c6195f56d43ef08",
+    "runtime/inference_timing.py": "2d5b32b66d02565562ab0fa7fa841124f457ab77896b7a5c38dc9bbd5ccf1932",
+    "runtime/official.py": "31ead19b83a972bdda960ad0be6352d563bf6f54c32f05537dbb56413818fb7d",
+    "runtime/prompts.py": "5718ee6495194b20eff37ffb8fe1b02df1bd36f5a87ad6415ee9970dd3cee784",
+    "runtime/scan.py": "9a89bed724d2bb8baad13403e85bd7658f0c4d54485fed528bcc06bd3027e658",
+    "runtime/suite.py": "fca581f9d3486b72c2e816947301bce3e53f7ecd4d81e8f1a6590f4c64d0a83e",
+    "scripts/audit_baseline.py": "d3a02865393db0ea710f9100d55ac7a3fd5f1fcb924a9022bb83a90ef1dabcba",
+    "scripts/prepare_wan22.sh": "f432b85f30f42dbdaf4e9061ff40828af772bd4cd41499d8edfe38d685f2cc9e",
+    "scripts/run_t2v_a14b.py": "d4ef1b38aad70cc961c2559e4bafc5fe3017704304451bae18e65c7ccea6c807",
+    "scripts/run_t2v_a14b.sh": "4fd92aacf140795238973afaf307939e1547007fd9f89bed1fba33b37e1b7584",
+    "scripts/validate_source.py": "b200cf47afd19e900381ef6ff95b3d761ba24bfcaea0b7d46899a5331aa9c7ae",
+    "vendor/LICENSE": "aeeeecdec2d7c87c97a1ec0284274b5aca9fcf27ef34b11e1f38d0add7163931",
+    "vendor/UPSTREAM_README.md": "8ae75240d94e6f53bd225ea9e03f38694e92a9a9a998aa75cd295be132e6c893",
+    "vendor/magcache_generate.py": "9455858d01a7ed55f6e6ba97358354f34ba9f0f5a8d03a967d9abb42d0c3d10d"
+  }
+}

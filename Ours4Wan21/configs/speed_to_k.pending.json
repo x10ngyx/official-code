@@ -1,0 +1,30 @@
+{
+  "schema": "ours4wan21_speed_to_k_v1",
+  "status": "pending",
+  "protocol": {
+    "model": "Wan2.1-T2V-1.3B",
+    "width": 832,
+    "height": 480,
+    "frames": 81,
+    "fps": 16,
+    "steps": 50,
+    "solver": "unipc",
+    "shift": 5,
+    "cfg": 5,
+    "seed": 42,
+    "dit_compute_dtype": "bfloat16",
+    "offload_model": false,
+    "t5_cpu": false,
+    "batch_size": 1
+  },
+  "forced_steps": [
+    0,
+    49
+  ],
+  "entries": [],
+  "entry_schema": {
+    "skip_budget": "integer 0..48",
+    "calibrated_speedup": "positive measured ratio"
+  },
+  "note": "No Wan21 target-speedup to exact-K calibration supplied. Use explicit --skip-budget until empirical calibration exists."
+}

@@ -1,0 +1,9 @@
+{
+  "source": "work/Wan2.2/predicotr-rl/latent_features.py",
+  "source_sha256": "da80ae0552017151c94f90dfee4bef7f7d592ea86612b528a40996bc5bf48110",
+  "adaptations": [
+    "version wan21_latent_groups_v1",
+    "history reset at step0 only",
+    "forced recomputes at 0/49; step32 is discretionary"
+  ]
+}

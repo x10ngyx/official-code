@@ -42,6 +42,8 @@ git -C "$destination" checkout --detach "$commit"
 git -C "$destination" apply "$project_dir/patches/wan22_42bf4cf_teacache.patch"
 install -m 0644 "$project_dir/runtime/teacache.py" "$destination/wan/teacache.py"
 install -m 0644 "$project_dir/runtime/inference_timing.py" "$destination/wan/inference_timing.py"
+install -m 0644 "$project_dir/../ComponentMetrics/component_timing.py" \
+  "$destination/wan/component_timing.py"
 
 "$python_bin" "$script_dir/validate_prepared_tree.py" \
   --source "$destination" \

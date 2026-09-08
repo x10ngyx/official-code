@@ -21,7 +21,13 @@ def decode_video_rgb(path: str | Path) -> np.ndarray:
     """Decode a video as T,C,H,W float32 RGB in [0,1]."""
 
     video_path = Path(path).resolve(strict=True)
-    reader = imageio.get_reader(str(video_path), "ffmpeg")
+    # The host has a tight cgroup PID budget.  FFmpeg otherwise creates one
+    # raw-video encoder thread per visible CPU and concurrent evaluations can
+    # fail before decoding the first frame with EAGAIN.  A single output thread
+    # preserves the decoded RGB bytes while keeping evaluation resumable.
+    reader = imageio.get_reader(
+        str(video_path), "ffmpeg", output_params=["-threads", "1"]
+    )
     frames: list[np.ndarray] = []
     try:
         for index, frame in enumerate(reader):

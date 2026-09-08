@@ -6,17 +6,22 @@ research. The local workspace directory and public repository are both named
 
 ## 目录结构
 
+- `MagCache4Wan21/`、`DiCache4Wan21/`、`TaylorSeer4Wan21/`：新增Wan21对比方法包；DiCache恢复官方缓存数值行为，其余方法保留导入核心。
+- `Wan21Benchmark/`：三个新包的本地常驻GPU生成、组件计量和公共质量评测适配器，详见其README。
+
+- `DiCache4Wan22/`：保留官方 Wan2.1 probe、独立 CFG gate 和 DCTA 的 Wan2.2 必要迁移；含双专家状态管理、原生 baseline、持久 batch、probe 计量、配对质量评测及官方一致性验证。
+- `MagCache4Wan22/`：锁定官方 MagCache 原始函数与幅值比表的 Wan2.2-T2V-A14B 实现；保留独立 CFG gate、原始阶段保护及累计量语义，提供原生 baseline、官方校准、固定协议推理、组件计量、配对质量评测与一致性测试。
 - `TeaCache4Wan22/`：面向 Wan2.2-T2V-A14B 的 TeaCache 完整复现包，含锁定上游的集成补丁、runtime、固定协议、70-prompt 系数标定、组件 CUDA 计时、Calflops/真实 cache path 计算量聚合、运行/验证脚本与测试。
 - `TeaCache4Wan21/`：以锁定的原始 Wan2.1 为统一入口，显式可选注入官方 TeaCache
   方法，并使用本仓库 VideoMetrics 与 VbenchEvaluation 工具完成质量评测。
 - `SeaCache4Wan22/`：面向锁定 Wan2.2-T2V-A14B 的干净 SeaCache 包；仅含 stage-aware timestep residual cache、SEA filter、共享 CFG gate、最小集成 patch、固定协议 runner、trace、推理计时与 CPU tests。
 - `SeaCache4Wan21/`：以锁定原始 Wan2.1 为 baseline，显式可选注入 corrected filtered-boundary SeaCache T2V 实现；cond/uncond 独立 gate、独立 previous/accumulator/residual，强制步也保存 SEA-filtered feature，不含其他 cache 方法。该修正版不冒充官方 raw-boundary 的逐行等价实现。
-- `Ours4Wan21/`：Wan2.1-T2V-1.3B learned cache controller 项目；当前包含 OpenVid3000×3 随机 threshold 数据采集、TeaCache 风格 inference timing、trace-weighted Calflops TFLOPs、发布与审计子项目。
+- `Ours4Wan21/`：Wan2.1-T2V-1.3B learned cache controller；包含 OpenVid3000×3 采集、本机配置的 400-epoch Exact-K IQL 离线训练、5 标量/SEA7 推理及 SEA7+latent 预留模式。推理直接复用 SeaCache4Wan21 基础实现，接入组件计量和统一质量评测。
 - `Vbench200/`：从 VBench 944 个唯一 prompt 中固定随机抽取的 200 条开源测试集，含复现脚本与来源校验信息。
 - `VbenchEvaluation/`：Vbench200 的官方 VBench 16维评测适配、版本锁定、权重缓存约定与分数聚合工具。
 - `VideoMetrics/`：统一视频 RGB PSNR、SSIM、LPIPS 全参考评测包、命令行入口与回归测试；公式来源单独记录在包内上游锁和致谢中。
 - `CalflopsEvaluation/`：基于 Calflops 的 forward-only FLOPs/TFLOPs 计数、未覆盖算子补偿与 cache trace 聚合工具；区分每视频总 TFLOPs 和吞吐率 TFLOP/s。
-- `ComponentMetrics/`：五条正式方法链路共用的 T5/VAE 计时、T5/VAE Calflops profile、固定协议验证与 strict schema 提取器。
+- `ComponentMetrics/`：方法包共用的 T5/VAE 计时、T5/VAE Calflops profile、固定协议验证与 strict schema 提取器。
 TeaCache Wan2.1 原始 baseline、显式可选的官方方法注入、复现校验和评测编排已加入，
 历史上完成过 GPU 一致性、latency 与 Calflops TFLOPs 冒烟实验，但旧产物不含当前
 强制的全部组件计量和 VBench，不能作为新 schema 的合规结果；

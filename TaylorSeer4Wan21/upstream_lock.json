@@ -1,0 +1,36 @@
+{
+  "reference_repository": "https://github.com/Shenyi-Z/TaylorSeer.git",
+  "reference_commit": "704ee98c74f7f04da443daa3c0aa2cc7803d86e3",
+  "reference_license": "GPL-3.0",
+  "usage": "read-only semantic comparison; no reference source files copied",
+  "audited_files_sha256": {
+    "TaylorSeer-Wan2.1/wan/taylorseer/cache_functions/cache_init.py": "a492b17ff890527aec4d32bc020b409b39017fc9b554b63edb57d9f8ca95d031",
+    "TaylorSeer-Wan2.1/wan/taylorseer/forwards/wan_attention_forward.py": "15c0c13e428d8ba1c05b6c53d3996f1bd5413ab7cf02bd6083e85e78e247d4f3",
+    "TaylorSeer-Wan2.1/wan/taylorseer/taylorseer_utils/__init__.py": "961edc25bc5e53ac6888c9824146676a0fadd965a319eac89fd03cb56a002bf2"
+  },
+  "integration_origin": {
+    "repository": "https://github.com/maverick-ssh/wan21-cache-benchmark",
+    "commit": "8a70ce22c9577c33ba38d7a641b8cf9cef8e3938",
+    "local_protocol": "resident_gpu_offload0_t5gpu",
+    "shared_runtime": "../Wan21Benchmark"
+  },
+  "wan21": {
+    "repository": "https://github.com/Wan-Video/Wan2.1",
+    "commit": "65386b2e03c490796eede31b0325a6a595cc684e",
+    "license": "Apache-2.0",
+    "compatibility_files": {
+      "generate.py": "f4aae5a3edafa9522ccbbc19d200928035f0a594d125b8a113c04f031eeeeeb0",
+      "wan/modules/model.py": "06f4b785b3b62b0b115ec01aba5580b1f116a6bb3e3c2cd8b3e160f3b0df09a0",
+      "wan/text2video.py": "ca344c0f24d3d305dd93a0433dc88a212e5d815bb8a784f8f54fc9fa98ff06c1",
+      "requirements.txt": "b50988f3b7627c11456d7ecaf7274f6ad8b7c25ce0dd493f6304462b4b34cc1c"
+    }
+  },
+  "integration_artifact_sha256": {
+    "experiments/fixed_protocol/run.py": "a15e1241e68f8a20b510e17c6d281dd2669e2aec798aa203f625607128762fa7",
+    "generate.py": "596e94566f1d862085280fa7efd3468c73b06a6af6da4eeb53dc98acbcaebcac",
+    "inference_timing.py": "e05b1679bfa845371cf709711f5d19fa8569fd0d87e3a559ed69f9b422634c78",
+    "run_wan21.sh": "d7f8ec6cd44e7f88c7a4a82aa182514e74dacca13d7d9f5d238d2b46fe155bf3",
+    "taylorseer.py": "5a91ed6fb946c4b1b0d2e68e926d6592332d7eeac046817506a706c04c9f2591",
+    "tests/test_taylorseer.py": "e2ad951a05873f0717d06bfc1046141ca4f6fd0e5ebbef0dfd696701d040e0f9"
+  }
+}

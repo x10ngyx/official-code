@@ -31,6 +31,13 @@ export NUMEXPR_NUM_THREADS=1
   "$project_dir/scripts/compare_runs.py" \
   "$project_dir/experiments/performance_t2v_a14b/profile_calflops.py" \
   "$project_dir/experiments/performance_t2v_a14b/aggregate_performance.py" \
+  "$project_dir/experiments/vbench200_t2v/generate_vbench200.py" \
+  "$project_dir/experiments/vbench200_t2v/profile_calflops.py" \
+  "$project_dir/experiments/vbench200_t2v/aggregate_performance.py" \
+  "$project_dir/experiments/vbench200_t2v/evaluate_results.py" \
+  "$project_dir/experiments/vbench200_t2v/build_final_report.py" \
+  "$project_dir/experiments/vbench200_t2v/build_suite_report.py" \
+  "$project_dir/experiments/vbench200_t2v/run_vbench200.py" \
   "$project_dir/experiments/threshold_scan_vbench8_t2v_a14b/plan_scan.py" \
   "$project_dir/experiments/threshold_scan_vbench8_t2v_a14b/finalize_scan.py" \
   "$project_dir/scripts/validate_calibration_source_equivalence.py" \
@@ -46,5 +53,6 @@ bash -n "$project_dir/experiments/smoke_t2v_a14b/run_pair.sh"
 bash -n "$project_dir/experiments/smoke_t2v_a14b/finalize_pair.sh"
 bash -n "$project_dir/experiments/threshold_scan_vbench8_t2v_a14b/run_scan.sh"
 bash -n "$project_dir/experiments/threshold_scan_vbench8_t2v_a14b/run_worker.sh"
+bash -n "$project_dir/experiments/vbench200_t2v/launch_threshold_suite_029_045_068.sh"
 
 echo "TeaCache4Wan22 tests passed"

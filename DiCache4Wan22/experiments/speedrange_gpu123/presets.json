@@ -1,0 +1,12 @@
+{
+  "schema": "dicache4wan22_target_scan_v1",
+  "target_speedups": [1.8, 2.4, 3.0],
+  "focus_speedup_range": [1.5, 3.5],
+  "relative_tolerance": 0.02,
+  "retention_ratio": 0.2,
+  "probe_depth": 1,
+  "coarse_thresholds": [0.1, 0.2, 0.4, 0.8],
+  "max_rounds": 4,
+  "max_threshold": 8.0,
+  "min_threshold_gap": 0.005
+}

@@ -11,3 +11,10 @@
   baseline 与 threshold `0.10` TeaCache 集成 smoke；trace 为 3/50 reuse，
   inference-only speedup `0.994812x`，RGB PSNR `30.951523 dB`。该结果只验证
   端到端链路，不是推荐阈值或正式性能结论。
+- `teacache4wan22_vbench200_batch_preflight_thr029_20260904_123958`：正式
+  VBench200 batch 管线的 threshold `.29` 单样本 GPU 验收，覆盖 persistent
+  model lifecycle、50-step TeaCache trace、T5/DiT/VAE timing、真实 Calflops、
+  性能聚合及 PSNR/SSIM/LPIPS；不是 200-prompt 正式结果。
+- `teacache4wan22_vbench200_thr029_045_068_fullwall_staggered_gpu0123_20260904_133701`：
+  正在运行的 `.29/.45/.68` 正式 VBench200 套件；四卡 persistent batch worker
+  分两波错峰，直接复用 SeaCache baseline，生成结束后自动运行全部质量与性能评测。

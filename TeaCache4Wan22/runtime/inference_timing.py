@@ -13,9 +13,14 @@ from typing import Any, Iterator
 
 import torch
 
-REPOSITORY_DIR = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
-from component_timing import ComponentTimer  # noqa: E402
+try:
+    from wan.component_timing import ComponentTimer
+except ModuleNotFoundError as error:
+    if error.name not in {"wan", "wan.component_timing"}:
+        raise
+    REPOSITORY_DIR = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(REPOSITORY_DIR / "ComponentMetrics"))
+    from component_timing import ComponentTimer
 
 
 STAGES = ("high", "low")

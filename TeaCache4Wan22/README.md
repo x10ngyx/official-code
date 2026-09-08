@@ -163,6 +163,13 @@ For paired full-reference quality, use this repository's sibling
 the official 16-dimension evaluation adapter are available in `Vbench200/`
 and `VbenchEvaluation/`.
 
+The formal three-threshold VBench200 runner is under
+`experiments/vbench200_t2v/`. It locks thresholds `.29/.45/.68`, directly
+reuses the validated SeaCache no-cache baseline, uses four persistent workers
+with two-wave staggered initialization, profiles Calflops once, and starts
+PSNR/SSIM/LPIPS plus VBench automatically only after all candidate generation
+is complete.
+
 ## Coefficient reproduction
 
 `experiments/fit_t2vcompbench70_wan22_t2v_a14b/` reproduces TeaCache's
@@ -228,8 +235,8 @@ Before reporting a speed-quality result, also verify:
   coefficient packaging.
 - `configs/`: frozen runtime protocol.
 - `coefficients/`: validated protocol-bound polynomial files.
-- `experiments/`: coefficient calibration, fixed-protocol smoke, and
-  performance profiling/aggregation.
+- `experiments/`: coefficient calibration, fixed-protocol smoke, performance
+  profiling/aggregation, and the formal VBench200 threshold suite.
 - `tests/`: CPU and installation checks.
 - `experiment_results/`: ignored local symlinks to external result roots.
 - `upstream_lock.json` / `NOTICE.md`: source commits, original hashes,

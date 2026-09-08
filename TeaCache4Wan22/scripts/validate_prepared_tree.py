@@ -55,6 +55,7 @@ def main() -> None:
     patch_path = project_root / "patches" / "wan22_42bf4cf_teacache.patch"
     runtime_path = project_root / "runtime" / "teacache.py"
     timing_runtime_path = project_root / "runtime" / "inference_timing.py"
+    component_timing_path = project_root.parent / "ComponentMetrics" / "component_timing.py"
     protocol_path = project_root / "configs" / "wan22_t2v_a14b_50step_dpmpp.json"
     if args.mode == "upstream":
         observed = {relative: sha256(source / relative) for relative in original_hashes}
@@ -69,11 +70,16 @@ def main() -> None:
     else:
         installed_runtime = source / "wan" / "teacache.py"
         installed_timing_runtime = source / "wan" / "inference_timing.py"
+        installed_component_timing = source / "wan" / "component_timing.py"
         if sha256(runtime_path) != sha256(installed_runtime):
             raise RuntimeError("Installed wan/teacache.py differs from the canonical runtime.")
         if sha256(timing_runtime_path) != sha256(installed_timing_runtime):
             raise RuntimeError(
                 "Installed wan/inference_timing.py differs from the canonical runtime."
+            )
+        if sha256(component_timing_path) != sha256(installed_component_timing):
+            raise RuntimeError(
+                "Installed wan/component_timing.py differs from the canonical runtime."
             )
         patched_files = ("generate.py", "wan/modules/model.py", "wan/text2video.py")
         observed_names = set(
@@ -89,14 +95,11 @@ def main() -> None:
             raise RuntimeError(
                 f"Prepared tracked-file set differs from the canonical patch: {sorted(observed_names)}"
             )
-        observed_patch = subprocess.run(
-            ["git", "diff", "--no-ext-diff", "--binary", "--", *patched_files],
+        subprocess.run(
+            ["git", "apply", "--reverse", "--check", str(patch_path)],
             cwd=source,
             check=True,
-            stdout=subprocess.PIPE,
-        ).stdout
-        if sha256_bytes(observed_patch) != sha256(patch_path):
-            raise RuntimeError("Prepared tracked diff differs from the canonical patch.")
+        )
         marker_requirements = {
             "generate.py": (
                 "--teacache_threshold",
@@ -124,6 +127,7 @@ def main() -> None:
             "wan/modules/model.py",
             "wan/teacache.py",
             "wan/inference_timing.py",
+            "wan/component_timing.py",
         ):
             py_compile.compile(str(source / relative), doraise=True)
 
@@ -135,9 +139,22 @@ def main() -> None:
         "patch_sha256": sha256(patch_path),
         "runtime_sha256": sha256(runtime_path),
         "timing_runtime_sha256": sha256(timing_runtime_path),
+        "component_timing_sha256": sha256(component_timing_path),
         "protocol_sha256": sha256(protocol_path),
         "status": "pass",
     }
+    if args.mode == "prepared":
+        payload["sha256"] = {
+            relative: sha256(source / relative)
+            for relative in (
+                "generate.py",
+                "wan/text2video.py",
+                "wan/modules/model.py",
+                "wan/teacache.py",
+                "wan/inference_timing.py",
+                "wan/component_timing.py",
+            )
+        }
     expected_artifacts = lock["integration_artifacts"]
     if payload["patch_sha256"] != expected_artifacts["patch_sha256"]:
         raise RuntimeError("Integration patch SHA256 differs from upstream_lock.json.")
@@ -147,6 +164,10 @@ def main() -> None:
         "timing_runtime_sha256"
     ]:
         raise RuntimeError("Timing runtime SHA256 differs from upstream_lock.json.")
+    if payload["component_timing_sha256"] != expected_artifacts[
+        "component_timing_sha256"
+    ]:
+        raise RuntimeError("Component timing SHA256 differs from upstream_lock.json.")
     if payload["protocol_sha256"] != expected_artifacts["protocol_sha256"]:
         raise RuntimeError("Protocol SHA256 differs from upstream_lock.json.")
     if args.write_manifest:

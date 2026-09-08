@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "wan21": {
+    "repository": "https://github.com/Wan-Video/Wan2.1",
+    "commit": "65386b2e03c490796eede31b0325a6a595cc684e",
+    "license": "Apache-2.0",
+    "compatibility_files": {
+      "generate.py": "f4aae5a3edafa9522ccbbc19d200928035f0a594d125b8a113c04f031eeeeeb0",
+      "wan/modules/model.py": "06f4b785b3b62b0b115ec01aba5580b1f116a6bb3e3c2cd8b3e160f3b0df09a0",
+      "wan/text2video.py": "ca344c0f24d3d305dd93a0433dc88a212e5d815bb8a784f8f54fc9fa98ff06c1",
+      "requirements.txt": "b50988f3b7627c11456d7ecaf7274f6ad8b7c25ce0dd493f6304462b4b34cc1c"
+    }
+  },
+  "magcache_method_reference": {
+    "repository": "https://github.com/Zehong-Ma/MagCache",
+    "commit": "df81cb181776c2c61477c08e1d21f87fda1cd938",
+    "license": "Apache-2.0",
+    "scope": "Official Wan2.1 T2V 1.3B magnitude curve, accumulated-error gate, maximum-skip limit, and branch-local residual reuse",
+    "reference_files": {
+      "MagCache4Wan2.1/magcache_generate.py": "96abad5580433f453194ecec0ca03aec3b722ce315afd3105416f7c8652460c7"
+    }
+  },
+  "integration": {
+    "entrypoint": "generate.py",
+    "controller": "magcache.py",
+    "installer": "wan21_integration.py",
+    "supported_tasks": [
+      "t2v-1.3B"
+    ],
+    "fixed_retention_ratio": 0.2,
+    "excluded_methods": [
+      "block cache",
+      "CFG cache",
+      "ZEUS",
+      "TeaCache",
+      "learned policy"
+    ]
+  },
+  "integration_artifact_sha256": {
+    "experiments/fixed_protocol/run.py": "f1980fe96bdcba4dba4838635504943d282f112ada44556369a6a1e0defd1d7f",
+    "generate.py": "47b082bef0354b23a6d6404558d09b392b8d01e0670afc33e4dac0bd09bf558b",
+    "inference_timing.py": "8c6c23a9583ae676046640af514e1e3ea0a5f1d95c4c142f22caec4153d8fe64",
+    "magcache.py": "24b910626de603182b9c4c0c7007ff9559d0ec01692bf1faf69b746eeadfb6f0",
+    "run_wan21.sh": "47e38bcdda58dd23592002639f10fcf3106c4df2b9fd4d179d5f119888e1180f",
+    "tests/test_inference_timing.py": "9f3d685e466f271935cdfde6409a076f34d740cda9b9881b4fd216e7b966e9e3",
+    "tests/test_magcache.py": "2e70a33ec3eba082f419d366845a7ae5c6b6ce105b12554dd9bd950ff8c13dfc",
+    "tests/test_static_integration.py": "6420a172be11fe5da25e93e14ac7d18c0a52c0a9e0117864c02f8cf4ea87b6e5",
+    "validate_reproduction.py": "a08d3c7f0b372b47435c1ed563d18a9b7a938209f55a1218a557d5766ed7c2a8",
+    "wan21_integration.py": "b3776beb6a4513265d20f1e8e765cd8d0d680787868fe8b99c6b2fc698029ce2"
+  },
+  "evaluation_boundary": {
+    "paired_metrics": "../VideoMetrics/evaluate.py",
+    "vbench": "../VbenchEvaluation/run_vbench200.sh"
+  },
+  "integration_origin": {
+    "repository": "https://github.com/maverick-ssh/wan21-cache-benchmark",
+    "commit": "8a70ce22c9577c33ba38d7a641b8cf9cef8e3938",
+    "local_protocol": "resident_gpu_offload0_t5gpu",
+    "shared_runtime": "../Wan21Benchmark"
+  }
+}

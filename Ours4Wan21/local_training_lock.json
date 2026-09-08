@@ -1,0 +1,44 @@
+{
+  "sources": {
+    "work/Wan2.2/predicotr-rl/models.py": {
+      "sha256": "2284c4a326f7d14d571a20b5e836be1985b26d80fcd08276124a7b554a4c2e00",
+      "symbols": {
+        "IQLModelConfig": "44bef0c9f96930f533fd329396f0f5c181cd336f3ace4c76c84f705cb9d8b176",
+        "build_mlp": "1b2494b1e7c38cf961dbaceae0d48c9cddaf1b5a1935cea76b22fe68c1f051ac",
+        "ValueNet": "59d0d2f5da0f23b7ee63cf5eac6c74a7041c7a4c33d205585eef54284bbc2286",
+        "QNet": "3e79b2e895fcb6d2c8fbc16c43cd290a792b4a1f90e0bfbd21678ab92488340e",
+        "PolicyNet": "fb7c312ace48c0c7d15a52c89c174db61996a03ebc17d437ac486dd2062ad68e",
+        "gather_action_values": "2a1b89dc6d236f7a06ea2d8eb8b6a8bfe032c9f4e47f2604c6cbd6bb28a6b606",
+        "expectile_loss": "197c4e756b3d64781ee50bbb8664b82727e45844855a285368454f6160b0f6a5",
+        "soft_update": "40f05ece48d6b932ca9dea123b2434311be90b891e844639c46fea8f5572436c"
+      }
+    },
+    "work/Wan2.2/predicotr-rl/data.py": {
+      "sha256": "66b2a8b0e78fbf464bc3769d359953cc99b41c239ebd35204dc3b6423931cfda",
+      "symbols": {
+        "compute_normalizer": "3e1a14843870170a23c09e5083853f5aef2810eb96665b5fcc3e54a3f7b03f96",
+        "apply_normalizer": "012673d51edbd48aaed4c6515e1a2ff40e10996f91a8d665d6ec3c3294469097"
+      }
+    },
+    "work/Wan2.2/predicotr-rl/train_iql_hard_budget.py": {
+      "sha256": "1b5cda78e6e0b0e01bdfc3fbf763286f3fdb47d66a9b797e40e474e94c91bd56",
+      "symbols": {
+        "_move_batch": "48fab15dcba7905ff844b493fce1c4e52cb418993f90e49cc0547880c04fa823",
+        "_actor_terms": "0e71a97254d90dd5f316ebb63df099d977eeec21d83d69fda4872b27f18736a7",
+        "_run_epoch": "0958d79a6dffd0e66c55ca965952cb6132b9ceb6dc6d8296df19b080ba12d474"
+      }
+    },
+    "work/Wan2.2/predicotr-rl/hard_budget.py": {
+      "sha256": "9873bc02d22bd6dcdeea4ac39612632b495a4a80b8788c3ae38e3a0c063be05e",
+      "symbols": {
+        "normalize_forced_steps": "5dd0a4928de288350c1903170570f82bafd0d4e1ccfec98dffc1a71267b66375",
+        "max_skip_budget": "0f27a8dcd3a55800e446d2817d7d65635cfb3751eccde09267519e942fee9f27",
+        "target_skip_budget_from_calibration": "2306a99b1b0e514e79bccf1cc34231bc904dad4a2cc23cea367674b4a59fc917",
+        "required_hard_budget_action": "ad822547424ae68a87da03471aa9f55de9933eb78bcb16375ea23d18bd6f3f82"
+      }
+    }
+  },
+  "launcher": "work/data-collection-random/experiments/random_only_state_revision_v1/train_pooled_control.py",
+  "adaptation": "Wan21 native boundaries (0,49); 5/7 scalar inputs. IQL kernels unchanged.",
+  "launcher_sha256": "86bea036b7665e54bd5139c3f92959428e74f7d3e7df79dd02a625c26be03e25"
+}

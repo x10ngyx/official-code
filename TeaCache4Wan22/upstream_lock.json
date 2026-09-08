@@ -37,9 +37,10 @@
     "use": "70-prompt stratified polynomial calibration"
   },
   "integration_artifacts": {
-    "patch_sha256": "c45c90d382c8b6ee9e0b78b814dc905d69adab2ad26236fb3b0bab0d1b111aaf",
+    "patch_sha256": "3b432dd37fe99b521403e6e8aa4e3010b0f9e7046ffc39ea3ce1a67e8c9242d0",
     "runtime_sha256": "66e3284a640a75e09af9194320f8041a1a97b5aab896b1d8c25ceb353f139583",
-    "timing_runtime_sha256": "85fb37dd481a15e596a4752b2a4ff8fffd05e2dd4410214dd5b1be8bf26db78f",
+    "timing_runtime_sha256": "739667aed43b48b3e269b53f56fe2dc7f020881538eadfec441cdfc855ec11ed",
+    "component_timing_sha256": "24b4953c2d5c1059ab29be9f0796401ad4ab93eb24aa8606ab3f7297a5f724fe",
     "protocol_sha256": "9898f731e21aa3ac1bf7b0b6b1c0a3978354f1d1b5bd1ab8ef4569e453bc46b0",
     "coefficient_sha256": "8b9550f7bd190aafcfac7871bb12d387fbfb4f6afe61e285d08a5b641b0c2970"
   }

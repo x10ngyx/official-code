@@ -10,6 +10,10 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT.parent / "ComponentMetrics"))
+from component_flops import _calflops_upsample_flops_compute  # noqa: E402
+
+import torch  # noqa: E402
 
 
 def sha256(path: Path) -> str:
@@ -58,6 +62,24 @@ def make_dit_forward(*, candidate: bool, block_count: int = 2) -> dict:
 
 
 class PerformanceAggregationTests(unittest.TestCase):
+    def test_calflops_tuple_upsample_compatibility_counts_output(self) -> None:
+        input_tensor = torch.zeros(1, 4, 3, 5)
+        expected = 1 * 4 * 6 * 10
+        self.assertEqual(
+            _calflops_upsample_flops_compute(
+                input_tensor, scale_factor=(2.0, 2.0)
+            ),
+            (expected, 0),
+        )
+        self.assertEqual(
+            _calflops_upsample_flops_compute(input_tensor, scale_factor=2.0),
+            (expected, 0),
+        )
+        self.assertEqual(
+            _calflops_upsample_flops_compute(input_tensor, size=(6, 10)),
+            (expected, 0),
+        )
+
     def test_wan21_style_timing_and_trace_weighted_flops(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_text:
             root = Path(temporary_text)
