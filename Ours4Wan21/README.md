@@ -1,10 +1,12 @@
 # Ours4Wan21：远端端到端运行手册
 
-本项目实现 Wan2.1-T2V-1.3B 的随机行为数据采集、训练 cache、离线 IQL、checkpoint 选择/诊断，以及 Vbench200 推理和评测。推理基础方法直接使用同级 `SeaCache4Wan21` 的 forward、采样器、SEA 滤波和分支残差缓存。
+本项目实现 Wan2.1-T2V-1.3B 的随机行为数据采集、训练 cache、离线 IQL、checkpoint 选择/诊断、在线微调，以及 Vbench200/在线VBench20推理和评测。推理基础方法直接使用同级 `SeaCache4Wan21` 的 forward、采样器、SEA 滤波和分支残差缓存。
 
 **当前远端进度（用户已确认）：random管线已经生成3000条随机候选轨迹。当前就使用这3000条，不需要继续补到9000条，也不重新抽样。** 一条轨迹是一条完整的50步候选视频；实际prompt数量和train/val/test数量从原始manifest读取，不假定是3000个不同prompt。
 
 **现在从第1节确认环境变量，再直接执行第3节冻结已有数据并整理cache，随后按第4–7节训练、选ckpt和测试。第2节仅保留从零造数据的历史入口，不是这批已有数据的前置步骤。** 本助手尚未读取远端产物，数据状态依据用户报告；cache入口仍会核验completion、真实PSNR/trace及原split，不把“已生成视频”自动当作所有训练材料齐全。
+
+在线微调从已有离线checkpoint继续：**8轮、每轮100条、5个critic预热epoch＋20个joint epoch、e11–e20按actor一致率选点；每4轮VBench20，20个prompt由远端确定**。完整远端步骤见 [在线微调手册](experiments/online_finetuning_v1/README.md)，入口为 `online.py`。该流程与下方离线400epoch流程独立。
 
 ## 目录与交付内容
 
@@ -15,6 +17,7 @@
 | `prepare_features.py` | 一次遍历已有候选raw latent，提取全部10组因果特征，支持中断续提取 |
 | `prepare_data.py` | 读取完成标记和trace，整理训练cache，不加载raw latent |
 | `train.py` | 固定本机配置的400epoch离线IQL |
+| `online.py` | 在线准备、采集、累计replay、续训、恢复与每4轮VBench20 |
 | `analyze_training.py` | 全训练指标表/曲线，以及本机post300规则的checkpoint选择 |
 | `generate.py` | 匹配baseline或指定策略/K的固定协议推理 |
 | `evaluate.py` | 性能及predictor overhead汇总、PSNR/SSIM/LPIPS和Vbench200评测 |

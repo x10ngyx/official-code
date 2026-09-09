@@ -10,3 +10,5 @@ Collection experiments remain under ../data_collection/experiments/. All results
 - rl_analysis_v1/: all-epoch metrics/plots and post300 validation-only checkpoint selection.
 
 - `latent_groups_v1/`: remote scalar5/SEA7 controls plus ten individual SEA7+latent groups; one-pass feature cache, training, selection, VBench and CPU validation.
+
+- `online_finetuning_v1/`: complete remote offline-to-online pipeline, frozen 5+20 epochs, e11–20 actor-agreement selection, VBench20 every four rounds, and CPU validation.

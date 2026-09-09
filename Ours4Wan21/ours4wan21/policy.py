@@ -53,6 +53,16 @@ class Policy:
     def reset_measurements(self):
         self._measurements = []
 
+    def set_sampling(self, seed=None):
+        """A per-trajectory CPU RNG; forced actions never call choose()."""
+        self.sampling_seed = seed
+        self.action_mode = 'policy_categorical' if seed is not None else 'policy_argmax'
+        self.sampling_generator = None
+        if seed is not None:
+            if type(seed) is not int or seed < 0:
+                raise ValueError('sampling seed must be a nonnegative integer')
+            self.sampling_generator = torch.Generator(device='cpu').manual_seed(seed)
+
     def overhead_summary(self):
         if self.device.type == 'cuda' and self._measurements:
             self._event_pairs[len(self._measurements)-1][1].synchronize()
@@ -86,6 +96,8 @@ class Policy:
             if not torch.isfinite(logits).all():
                 raise RuntimeError('nonfinite policy output')
             action, probability = int(logits.argmax().item()), float(logits.softmax(-1)[1].item())
+            if getattr(self, 'sampling_generator', None) is not None:
+                action = int(torch.rand((), generator=self.sampling_generator).item() < probability)
         self._measurements.append(dict(network_host_span_seconds=network_host,
             decision_wall_seconds=time.perf_counter()-decision_started))
         return action, probability

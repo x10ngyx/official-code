@@ -95,7 +95,7 @@ class Controller(reference.SeaCacheController):
         if branch == 'cond':
             if required is None:
                 action, probability = self.policy.choose(state)
-                reason = 'policy_argmax'
+                reason = getattr(self.policy, 'action_mode', 'policy_argmax')
             else:
                 action, probability = required, None
         else:
@@ -124,6 +124,7 @@ class Controller(reference.SeaCacheController):
             used_skips_before=self.used[branch], consecutive_skips_before=self.consecutive[branch],
             p_skip=probability, policy_queried=branch == 'cond' and required is None,
             actor_mask=float(required is None), native_forced_recompute=step_index in FORCED,
+            behavior_action_probability=(probability if action else 1-probability) if probability is not None else 1.,
             filtered_relative_l1=d, accumulated_distance_before=before,
             accumulated_distance_with_current=total, accumulated_distance_after=self.accumulators[branch],
             stored_feature='sea_filtered', execution=None)
@@ -146,6 +147,8 @@ class Controller(reference.SeaCacheController):
             forced_steps=list(FORCED), skip_budget=self.budget,
             step_reuse=self.used['cond'], step_recompute=50-self.used['cond'],
             actor_queries=sum(d['policy_queried'] for d in self.decisions),
+            action_mode=getattr(self.policy, 'action_mode', 'policy_argmax'),
+            sampling_seed=getattr(self.policy, 'sampling_seed', None),
             latent_feature_overhead=self.feature_overhead())
         return payload
 
