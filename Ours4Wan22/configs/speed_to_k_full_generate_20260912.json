@@ -1,0 +1,335 @@
+{
+  "schema": "ours4wan22_speed_to_k_v1",
+  "status": "calibrated",
+  "calibration_id": "seacache_full_generate_gpu0_corrected600_gpu123_supplement17_20260912",
+  "protocol": {
+    "model": "Wan2.2-T2V-A14B",
+    "width": 832,
+    "height": 480,
+    "frames": 45,
+    "fps": 16,
+    "steps": 50,
+    "solver": "dpm++",
+    "shift": 12,
+    "cfg_low_high": [
+      3.0,
+      4.0
+    ],
+    "boundary": 0.875,
+    "seed": 42,
+    "dit_compute_dtype": "bfloat16",
+    "offload_model": true,
+    "t5_cpu": false,
+    "batch_size": 1,
+    "fsdp": false,
+    "sequence_parallel": false,
+    "prompt_extension": false
+  },
+  "forced_steps": [
+    0,
+    32,
+    49
+  ],
+  "supported_target_speedup": [
+    1.5,
+    3.5
+  ],
+  "timing_scope": "complete_generate_wall",
+  "reference_method": "SeaCache4Wan22",
+  "ours_controller_overhead_included": false,
+  "selection": "nearest calibrated_speedup; tie chooses lower K",
+  "interpolation": "linear normalized latency (1/speedup), observed K support only",
+  "provenance": {
+    "source_result": "wan22_seacache_gpu123_onehour_calibration_20260911",
+    "legacy_corrected_candidates": 600,
+    "supplement_candidates": 17,
+    "supplement_prompt_ids": [
+      "vbench200_002",
+      "vbench200_051",
+      "vbench200_144"
+    ],
+    "supplement_physical_gpus": [
+      1,
+      2,
+      3
+    ],
+    "gpu0_correction": "legacy same-condition healthy GPU1/2/3 arithmetic mean; supplement has no GPU0 measurements",
+    "source_files": {
+      "diagnostic_calibration.json": "9a4940f98c4059b417074e8543afda432380d47889c64b4c4f502ca72cbb0dcc",
+      "summary.json": "b389b0925fca8dadaff9e3a46d2089f2d137cda6271e0c92456857d62c9aae93",
+      "INDEPENDENT_VALIDATION.json": "8846e546718379145023c183ec12e7c6a992866d83a17c929060c06be49e5c27"
+    },
+    "measured_points": [
+      {
+        "skip_budget": 18,
+        "train_trajectory_count": 3,
+        "raw_median_inference_speedup": 1.4923139226498308,
+        "calibrated_speedup": 1.4923139226498308
+      },
+      {
+        "skip_budget": 24,
+        "train_trajectory_count": 200,
+        "raw_median_inference_speedup": 1.8109224789475513,
+        "calibrated_speedup": 1.8109224789475513
+      },
+      {
+        "skip_budget": 27,
+        "train_trajectory_count": 3,
+        "raw_median_inference_speedup": 2.007719906540948,
+        "calibrated_speedup": 2.007719906540948
+      },
+      {
+        "skip_budget": 29,
+        "train_trajectory_count": 3,
+        "raw_median_inference_speedup": 2.167177594468673,
+        "calibrated_speedup": 2.167177594468673
+      },
+      {
+        "skip_budget": 30,
+        "train_trajectory_count": 5,
+        "raw_median_inference_speedup": 2.253471671444859,
+        "calibrated_speedup": 2.253471671444859
+      },
+      {
+        "skip_budget": 31,
+        "train_trajectory_count": 195,
+        "raw_median_inference_speedup": 2.3598200235649083,
+        "calibrated_speedup": 2.3598200235649083
+      },
+      {
+        "skip_budget": 33,
+        "train_trajectory_count": 3,
+        "raw_median_inference_speedup": 2.5844572309270006,
+        "calibrated_speedup": 2.5844572309270006
+      },
+      {
+        "skip_budget": 34,
+        "train_trajectory_count": 2,
+        "raw_median_inference_speedup": 2.7205922283331505,
+        "calibrated_speedup": 2.7205922283331505
+      },
+      {
+        "skip_budget": 35,
+        "train_trajectory_count": 1,
+        "raw_median_inference_speedup": 2.85715214009949,
+        "calibrated_speedup": 2.85715214009949
+      },
+      {
+        "skip_budget": 36,
+        "train_trajectory_count": 125,
+        "raw_median_inference_speedup": 3.041824301681951,
+        "calibrated_speedup": 3.041824301681951
+      },
+      {
+        "skip_budget": 37,
+        "train_trajectory_count": 74,
+        "raw_median_inference_speedup": 3.209421824035611,
+        "calibrated_speedup": 3.209421824035611
+      },
+      {
+        "skip_budget": 38,
+        "train_trajectory_count": 2,
+        "raw_median_inference_speedup": 3.4119941734176704,
+        "calibrated_speedup": 3.4119941734176704
+      },
+      {
+        "skip_budget": 39,
+        "train_trajectory_count": 1,
+        "raw_median_inference_speedup": 3.6190489701723174,
+        "calibrated_speedup": 3.6190489701723174
+      }
+    ]
+  },
+  "limitations": [
+    "SeaCache reference calibration adopted for Ours VBench target selection; actual Ours speedup must be measured.",
+    "New K points have only 1–3 prompts; calibration excludes CNN/latent-feature overhead.",
+    "Existing same-card baseline reused; initialization and warmup excluded from candidate timing."
+  ],
+  "entries": [
+    {
+      "skip_budget": 18,
+      "calibrated_speedup": 1.4923139226498308,
+      "estimate": "measured_K_median",
+      "support_K": [
+        18
+      ]
+    },
+    {
+      "skip_budget": 19,
+      "calibrated_speedup": 1.537394732938095,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        18,
+        24
+      ]
+    },
+    {
+      "skip_budget": 20,
+      "calibrated_speedup": 1.585284046485285,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        18,
+        24
+      ]
+    },
+    {
+      "skip_budget": 21,
+      "calibrated_speedup": 1.6362527531278812,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        18,
+        24
+      ]
+    },
+    {
+      "skip_budget": 22,
+      "calibrated_speedup": 1.6906077376618074,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        18,
+        24
+      ]
+    },
+    {
+      "skip_budget": 23,
+      "calibrated_speedup": 1.7486980638876426,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        18,
+        24
+      ]
+    },
+    {
+      "skip_budget": 24,
+      "calibrated_speedup": 1.8109224789475513,
+      "estimate": "measured_K_median",
+      "support_K": [
+        24
+      ]
+    },
+    {
+      "skip_budget": 25,
+      "calibrated_speedup": 1.8720901282568765,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        24,
+        27
+      ]
+    },
+    {
+      "skip_budget": 26,
+      "calibrated_speedup": 1.9375343553571631,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        24,
+        27
+      ]
+    },
+    {
+      "skip_budget": 27,
+      "calibrated_speedup": 2.007719906540948,
+      "estimate": "measured_K_median",
+      "support_K": [
+        27
+      ]
+    },
+    {
+      "skip_budget": 28,
+      "calibrated_speedup": 2.0844035554750993,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        27,
+        29
+      ]
+    },
+    {
+      "skip_budget": 29,
+      "calibrated_speedup": 2.167177594468673,
+      "estimate": "measured_K_median",
+      "support_K": [
+        29
+      ]
+    },
+    {
+      "skip_budget": 30,
+      "calibrated_speedup": 2.253471671444859,
+      "estimate": "measured_K_median",
+      "support_K": [
+        30
+      ]
+    },
+    {
+      "skip_budget": 31,
+      "calibrated_speedup": 2.3598200235649083,
+      "estimate": "measured_K_median",
+      "support_K": [
+        31
+      ]
+    },
+    {
+      "skip_budget": 32,
+      "calibrated_speedup": 2.4670355684636425,
+      "estimate": "in_support_latency_interpolation",
+      "support_K": [
+        31,
+        33
+      ]
+    },
+    {
+      "skip_budget": 33,
+      "calibrated_speedup": 2.5844572309270006,
+      "estimate": "measured_K_median",
+      "support_K": [
+        33
+      ]
+    },
+    {
+      "skip_budget": 34,
+      "calibrated_speedup": 2.7205922283331505,
+      "estimate": "measured_K_median",
+      "support_K": [
+        34
+      ]
+    },
+    {
+      "skip_budget": 35,
+      "calibrated_speedup": 2.85715214009949,
+      "estimate": "measured_K_median",
+      "support_K": [
+        35
+      ]
+    },
+    {
+      "skip_budget": 36,
+      "calibrated_speedup": 3.041824301681951,
+      "estimate": "measured_K_median",
+      "support_K": [
+        36
+      ]
+    },
+    {
+      "skip_budget": 37,
+      "calibrated_speedup": 3.209421824035611,
+      "estimate": "measured_K_median",
+      "support_K": [
+        37
+      ]
+    },
+    {
+      "skip_budget": 38,
+      "calibrated_speedup": 3.4119941734176704,
+      "estimate": "measured_K_median",
+      "support_K": [
+        38
+      ]
+    },
+    {
+      "skip_budget": 39,
+      "calibrated_speedup": 3.6190489701723174,
+      "estimate": "measured_K_median",
+      "support_K": [
+        39
+      ]
+    }
+  ]
+}

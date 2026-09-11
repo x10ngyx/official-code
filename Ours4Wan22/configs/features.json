@@ -1,0 +1,45 @@
+{
+  "version": "ours22_cnn_G1_features_v1",
+  "input_shape": [
+    16,
+    12,
+    60,
+    104
+  ],
+  "input_quantization": "float16_then_float32",
+  "direct_pool": [
+    4,
+    8,
+    8
+  ],
+  "temporal_mean_pool": [
+    8,
+    8
+  ],
+  "temporal_variance_pool": [
+    8,
+    8
+  ],
+  "variance_correction": 0,
+  "variance_before_spatial_pool": true,
+  "roles": [
+    "current_input",
+    "previous_input",
+    "last_recompute_input"
+  ],
+  "layout": "all_roles_3d_then_each_role_mean_var_2d_then_sea7",
+  "latent_filter": "none",
+  "stage_start": "zero_latent_features_and_reset_history",
+  "history_reset_steps": [
+    0,
+    32
+  ],
+  "forced_steps": [
+    0,
+    32,
+    49
+  ],
+  "normalizer": "train_only_per_coordinate_population_mean_std_floor_1e-6",
+  "normalized_cache_dtype": "float16",
+  "model_input_dtype": "float32"
+}

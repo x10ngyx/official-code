@@ -1,0 +1,16 @@
+{
+  "formal_method": "CNN+G1",
+  "files": {
+    "Ours4Wan21/experiments/cnn_mixed3500_v1/model.py": "4e749a4f7f0b2f796f2dabef55c80ee4e4f1288c4f99f187319f6b3bb6a168f2",
+    "Ours4Wan21/experiments/cnn_mixed3500_v1/features.py": "8ed731faf70ce3cb2ae874eb9a8ffe34eba28ff75bae007c523a2b869c1d3f2b",
+    "Ours4Wan21/ours4wan21/local_iql.py": "1e976c867322866aece0e31390a12f810ad86d5e7170e613afb004ac6281769d",
+    "SeaCache4Wan22/runtime/seacache.py": "9fe6c950746ac788c4f08d4543291ffffd538b2a1568b72b8a5346de5eaca422",
+    "SeaCache4Wan22/runtime/inference_timing.py": "665e7f5974621748e91c5a4466b098e62fe54c91f6480baaf5aa9ff7ef2495a2",
+    "SeaCache4Wan22/scripts/validate_prepared_tree.py": "1e44f4f7c2233fe5ab04729cba28b7260fb2abe558dd458c1ac58189563d8e6a",
+    "SeaCache4Wan22/experiments/performance_t2v_a14b/profile_calflops.py": "7e86b44a279095084e50da9d06aa0358e2e921a5bb058fe368cbda0e94859e36",
+    "SeaCache4Wan22/experiments/performance_t2v_a14b/aggregate_performance.py": "228e5536356d4b016ed1ea2979a55677f1058634b1a48e2bf8a363580514aedc",
+    "ComponentMetrics/component_timing.py": "24b4953c2d5c1059ab29be9f0796401ad4ab93eb24aa8606ab3f7297a5f724fe",
+    "ComponentMetrics/component_flops.py": "859dc818a922fe61c23d82571d8329cbaa338e41ef1adf5d7a33ac237753a067",
+    "ComponentMetrics/reporting.py": "d98110b8a2b6c03f331a490c295d53a40ce200d583203b9eac62c6789231ea65"
+  }
+}

@@ -9,6 +9,10 @@ research. The local workspace directory and public repository are both named
 
 ## 目录结构
 
+- `CacheImpact4Wan21/`：其他步全算、当前步单次skip的终局影响采集；40prompt×49step，先每5步加第2/50步，再补齐；含原始RGB标签、proxy/G1特征、远端续跑与完整评测说明。
+
+- `Ours4Wan22/`：按 Ours4Wan21 正式 CNN+G1 适配的 Wan22 Exact-K learned cache；含双专家历史管理、独立 CNN IQL 网络、固定协议 batch 生成、组件计时/TFLOPs 与 VideoMetrics/VBench 配对评测，详见包内 README。
+
 - `MagCache4Wan21/`、`DiCache4Wan21/`、`TaylorSeer4Wan21/`：新增Wan21对比方法包；DiCache恢复官方缓存数值行为，其余方法保留导入核心。
 - `Wan21Benchmark/`：三个新包的本地常驻GPU生成、组件计量和公共质量评测适配器，详见其README。
 

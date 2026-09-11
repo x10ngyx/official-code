@@ -1,0 +1,23 @@
+{
+  "model": "Wan2.2-T2V-A14B",
+  "width": 832,
+  "height": 480,
+  "frames": 45,
+  "fps": 16,
+  "steps": 50,
+  "solver": "dpm++",
+  "shift": 12,
+  "cfg_low_high": [
+    3.0,
+    4.0
+  ],
+  "boundary": 0.875,
+  "seed": 42,
+  "dit_compute_dtype": "bfloat16",
+  "offload_model": true,
+  "t5_cpu": false,
+  "batch_size": 1,
+  "fsdp": false,
+  "sequence_parallel": false,
+  "prompt_extension": false
+}
