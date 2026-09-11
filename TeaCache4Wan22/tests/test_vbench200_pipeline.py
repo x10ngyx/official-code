@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp")
+EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp")
 RUNNER_PATH = PROJECT / "experiments" / "vbench200_t2v" / "run_vbench200.py"
 SPEC = importlib.util.spec_from_file_location("teacache_vbench200_runner", RUNNER_PATH)
 RUNNER = importlib.util.module_from_spec(SPEC)

@@ -15,6 +15,7 @@ from .collector import (
     baseline_paths,
     candidate_paths,
     latent_bundle_complete,
+    resolve_prompt_limit,
     unique_prompt_rows,
     validate_flops_profile,
 )
@@ -469,6 +470,8 @@ def audit(
     require_complete: bool,
     deep_latents: bool,
     max_candidates: int | None,
+    prompt_limit: int | None = None,
+    require_vbench: bool = True,
 ) -> dict[str, Any]:
     manifest = manifest.expanduser().resolve(strict=True)
     parent = require_result_path(parent)
@@ -479,18 +482,23 @@ def audit(
     rows = read_jsonl(manifest)
     validate_candidate_manifest(rows)
     contract = manifest_contract(rows)
-    expected_candidate_count = int(contract["candidate_count"])
+    full_prompt_count = int(contract["selected_prompt_count"])
+    full_candidate_count = int(contract["candidate_count"])
+    limit = resolve_prompt_limit(rows, prompt_limit)
+    candidates_per_prompt = full_candidate_count // full_prompt_count
+    expected_candidate_count = limit * candidates_per_prompt
+    target_rows = rows[:expected_candidate_count]
     profile = validate_flops_profile(profile_path)
-    ready, missing = all_baselines_complete(rows, parent)
+    ready, missing = all_baselines_complete(rows, parent, limit)
     if not ready:
         raise RuntimeError(f"archive has {len(missing)} incomplete baselines")
     baseline_performance: dict[str, dict[str, Any]] = {}
-    for row in unique_prompt_rows(rows):
+    for row in unique_prompt_rows(rows)[:limit]:
         baseline_performance[str(row["sample_id"])] = validate_baseline(
             parent, row, profile, deep_latents=deep_latents
         )
     available: list[dict[str, Any]] = []
-    for row in rows:
+    for row in target_rows:
         if load_completion(parent, row) is None:
             break
         available.append(row)
@@ -500,8 +508,13 @@ def audit(
             f"{expected_candidate_count} candidates; prefix={len(available)}"
         )
     vbench_summary = None
-    if require_complete:
-        vbench_path = parent / "quality" / "vbench_summary.json"
+    if require_complete and require_vbench:
+        quality_root = parent / "quality"
+        if expected_candidate_count != full_candidate_count:
+            quality_root = (
+                quality_root / "stages" / f"prefix_{expected_candidate_count:09d}"
+            )
+        vbench_path = quality_root / "vbench_summary.json"
         vbench_summary = read_json(vbench_path)
         if (
             vbench_summary.get("schema") != "ours4wan21_vbench_summary_v1"
@@ -538,10 +551,14 @@ def audit(
         "archive_root": str(parent),
         "flops_profile": str(profile_path),
         "baseline_count_audited": len(baseline_performance),
+        "prompt_limit": limit,
+        "manifest_prompt_count": full_prompt_count,
+        "manifest_candidate_count": full_candidate_count,
         "contiguous_candidate_prefix": len(available),
         "candidate_count_audited": len(selected),
         "deep_latents": deep_latents,
         "require_complete": require_complete,
+        "vbench_required": require_vbench,
         "vbench_summary": vbench_summary,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -560,6 +577,12 @@ def main() -> None:
     parser.add_argument("--require-complete", action="store_true")
     parser.add_argument("--deep-latents", action="store_true")
     parser.add_argument("--max-candidates", type=int)
+    parser.add_argument("--prompt-limit", type=int)
+    parser.add_argument(
+        "--skip-vbench",
+        action="store_true",
+        help="audit a complete training-data archive without requiring VBench artifacts",
+    )
     args = parser.parse_args()
     if args.max_candidates is not None and args.max_candidates < 0:
         raise ValueError("--max-candidates must be nonnegative")
@@ -568,6 +591,8 @@ def main() -> None:
         require_complete=args.require_complete,
         deep_latents=args.deep_latents,
         max_candidates=args.max_candidates,
+        prompt_limit=args.prompt_limit,
+        require_vbench=not args.skip_vbench,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

@@ -1,4 +1,4 @@
-"""Compatibility output for the repository-wide work/compute_psnr.py contract."""
+"""Compatibility output for the standalone VideoMetrics PSNR contract."""
 
 from __future__ import annotations
 

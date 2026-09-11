@@ -288,13 +288,24 @@ def write_snapshot(
     return summary
 
 
-def publish(manifest: Path, parent: Path, *, require_complete: bool = False) -> dict[str, Any]:
+def publish(
+    manifest: Path,
+    parent: Path,
+    *,
+    require_complete: bool = False,
+    require_prefix_count: int | None = None,
+) -> dict[str, Any]:
     manifest = manifest.expanduser().resolve(strict=True)
     parent = require_result_path(parent)
     rows = read_jsonl(manifest)
     validate_candidate_manifest(rows)
     contract = manifest_contract(rows)
     expected_candidate_count = int(contract["candidate_count"])
+    if require_prefix_count is not None and not 0 <= require_prefix_count <= expected_candidate_count:
+        raise ValueError(
+            "required prefix count must be between zero and "
+            f"{expected_candidate_count}"
+        )
     published_root = parent / "published"
     published_root.mkdir(parents=True, exist_ok=True)
     lock_path = published_root / ".publish.lock"
@@ -305,6 +316,10 @@ def publish(manifest: Path, parent: Path, *, require_complete: bool = False) -> 
             raise RuntimeError(
                 "complete publication requires "
                 f"{expected_candidate_count} candidates; prefix={prefix}"
+            )
+        if require_prefix_count is not None and prefix != require_prefix_count:
+            raise RuntimeError(
+                f"publication requires prefix={require_prefix_count}; observed={prefix}"
             )
         snapshots = published_root / "snapshots"
         snapshots.mkdir(exist_ok=True)
@@ -359,8 +374,16 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--parent-root", type=Path, required=True)
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument("--require-prefix-count", type=int)
     args = parser.parse_args()
-    result = publish(args.manifest, args.parent_root, require_complete=args.require_complete)
+    if args.require_complete and args.require_prefix_count is not None:
+        parser.error("--require-complete and --require-prefix-count are mutually exclusive")
+    result = publish(
+        args.manifest,
+        args.parent_root,
+        require_complete=args.require_complete,
+        require_prefix_count=args.require_prefix_count,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

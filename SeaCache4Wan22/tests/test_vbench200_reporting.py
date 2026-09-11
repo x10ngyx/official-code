@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp")
+EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp")
 
 
 def write_json(path: Path, payload: dict) -> None:

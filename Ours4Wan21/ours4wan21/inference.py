@@ -1,16 +1,76 @@
 """Fixed resident Wan21 inference with one native warmup and persistent pipeline."""
 import argparse
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 import time
 
 from .contracts import (MODEL_ROOT, MODES, OFFICIAL, PROJECT, PROTOCOL,
-                        create_result, dump, sha256, state_names)
+                        create_nested_result, create_result, dump, sha256,
+                        state_names)
 from .policy import Policy, resolve_budget
 from .runtime import apply_policy
 from .overhead import predictor_fields, aggregate
 from .shared import benchmark
+
+
+def physical_gpu_uuid(torch_module, *, environ=None, pid=None, check_output=None):
+    """Return the UUID of the one physical GPU visible to this process.
+
+    ``torch.cuda.get_device_properties().uuid`` is unavailable in some supported
+    PyTorch builds.  In that case, resolve the current CUDA process through
+    nvidia-smi first; the explicit single-device visibility used by the formal
+    launcher is a fallback for the brief interval before a process is listed.
+    """
+    properties = torch_module.cuda.get_device_properties(0)
+    native = getattr(properties, 'uuid', None)
+    if native is not None and str(native).strip():
+        return str(native).strip()
+
+    environ = os.environ if environ is None else environ
+    pid = os.getpid() if pid is None else int(pid)
+    check_output = subprocess.check_output if check_output is None else check_output
+    try:
+        rows = check_output([
+            'nvidia-smi', '--query-compute-apps=pid,gpu_uuid',
+            '--format=csv,noheader,nounits'], text=True)
+    except (OSError, subprocess.SubprocessError) as error:
+        rows = ''
+        process_query_error = error
+    else:
+        process_query_error = None
+    matches = set()
+    for row in rows.splitlines():
+        fields = [value.strip() for value in row.split(',', 1)]
+        if len(fields) == 2 and fields[0] == str(pid) and fields[1]:
+            matches.add(fields[1])
+    if len(matches) == 1:
+        return matches.pop()
+    if len(matches) > 1:
+        raise RuntimeError(f'current process is attached to multiple physical GPUs: {sorted(matches)}')
+
+    visible = [value.strip() for value in environ.get('CUDA_VISIBLE_DEVICES', '').split(',')
+               if value.strip()]
+    if len(visible) != 1:
+        detail = f'; process query failed: {process_query_error!r}' if process_query_error else ''
+        raise RuntimeError(f'cannot resolve one physical GPU from CUDA_VISIBLE_DEVICES={visible!r}{detail}')
+    selector = visible[0]
+    if selector.startswith('GPU-'):
+        return selector
+    if not selector.isdigit():
+        raise RuntimeError(f'unsupported CUDA_VISIBLE_DEVICES selector for physical UUID: {selector!r}')
+    try:
+        uuid_rows = check_output([
+            'nvidia-smi', f'--id={selector}', '--query-gpu=uuid',
+            '--format=csv,noheader,nounits'], text=True)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError(f'failed to resolve physical GPU UUID for index {selector}') from error
+    uuids = [value.strip() for value in uuid_rows.splitlines() if value.strip()]
+    if len(uuids) != 1 or not uuids[0].startswith('GPU-'):
+        raise RuntimeError(f'invalid physical GPU UUID response for index {selector}: {uuids!r}')
+    return uuids[0]
 
 
 def parse_args():
@@ -28,6 +88,8 @@ def parse_args():
     prompts.add_argument('--prompt')
     prompts.add_argument('--prompts', type=Path, help='JSONL: sample_id and prompt_en or prompt')
     p.add_argument('--output-dir', type=Path, required=True)
+    p.add_argument('--result-parent', type=Path,
+                   help='Registered suite result root when output-dir is a nested condition')
     p.add_argument('--flops-profile', type=Path, required=True,
                    help='81-frame Wan21 ComponentMetrics/Calflops profile including T5/VAE')
     return p.parse_args()
@@ -35,7 +97,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    if Path(sys.prefix).name != 'wan2.2':
+    if 'wan2.2' not in Path(sys.prefix).name.lower():
         raise ValueError('use conda environment wan2.2')
     if args.state_mode is not None:
         state_names(args.state_mode)
@@ -72,9 +134,12 @@ def main():
         raise ValueError('resident Wan21 inference requires a 48GB-class GPU')
     torch.cuda.set_device(0)
     torch.set_num_threads(1)
+    device_uuid = physical_gpu_uuid(torch)
     if not args.baseline:
         policy = Policy(args.policy_checkpoint, device='cuda:0', state_mode=args.state_mode)
-    out = create_result(args.output_dir, '# Ours4Wan21 inference\n\nrun.json freezes protocol, policy and sources. videos/, traces/, timings/ contain measured samples; components.json contains full generate and T5/DiT/VAE timings/TFLOPs. Native warmup is excluded. COMPLETE.json means generation complete; quality is evaluated separately by evaluate.py.')
+    description = '# Ours4Wan21 inference\n\nrun.json freezes protocol, policy and sources. videos/, traces/, timings/ contain measured samples; components.json contains full generate and T5/DiT/VAE timings/TFLOPs. Native warmup is excluded. COMPLETE.json means generation complete; quality is evaluated separately.'
+    out = (create_nested_result(args.output_dir, args.result_parent, description)
+           if args.result_parent else create_result(args.output_dir, description))
     sys.path.insert(0, str(args.wan21_root.resolve()))
     import wan
     from wan.configs import WAN_CONFIGS
@@ -103,7 +168,7 @@ def main():
                         OFFICIAL / 'SeaCache4Wan21/wan21_integration.py']
         dump(out / 'run.json', dict(protocol=PROTOCOL, method=method, prompts=rows,
             checkpoint_dir=str(model_dir), gpu=torch.cuda.get_device_name(0),
-            gpu_uuid=str(torch.cuda.get_device_properties(0).uuid),
+            gpu_uuid=device_uuid,
             warmup='one native full generation', pipeline_init_seconds=init_seconds,
             policy_checkpoint=str(args.policy_checkpoint) if policy else None,
             policy_sha256=sha256(args.policy_checkpoint) if policy else None,
@@ -121,8 +186,17 @@ def main():
                 output_path=out / 'timings' / f'{sid}.json',
                 implementation='wan21' if args.baseline else 'ours')
             profiler.install()
+            torch.cuda.synchronize()
+            allocated_before = torch.cuda.memory_allocated()
+            reserved_before = torch.cuda.memory_reserved()
+            torch.cuda.reset_peak_memory_stats()
             with torch.no_grad():
                 video = pipe.generate(row['prompt'], **generation)
+            memory = dict(allocated_before_bytes=allocated_before,
+                          reserved_before_bytes=reserved_before,
+                          peak_allocated_bytes=torch.cuda.max_memory_allocated(),
+                          peak_reserved_bytes=torch.cuda.max_memory_reserved(),
+                          scope='one complete generate after native warmup; includes resident models and returned video; excludes video encoding')
             if controller:
                 trace = controller.summary()
             else:
@@ -132,16 +206,19 @@ def main():
             timing = json.loads((out / 'timings' / f'{sid}.json').read_text())
             if timing['status'] != 'success':
                 raise RuntimeError('failed measured generation')
+            timing['cuda_memory'] = memory
             overhead = {}
             if policy:
                 timing['predictor'] = policy.overhead_summary()
                 timing['latent_feature'] = controller.feature_overhead()
                 overhead = predictor_fields(timing, trace)
                 overhead['latent_feature_wall_seconds'] = timing['latent_feature']['wall_seconds']
-                dump(out / 'timings' / f'{sid}.json', timing)
+            dump(out / 'timings' / f'{sid}.json', timing)
             tflops = flops_for_calls(timing['calls'], profile, method)
             measurements.append(dict(sample_id=sid,
                 generate_seconds=timing['pipeline_generate_wall_seconds'],
+                peak_allocated_bytes=memory['peak_allocated_bytes'],
+                peak_reserved_bytes=memory['peak_reserved_bytes'],
                 dit_tflops=tflops, **extract_component_latency(timing), **components, **overhead))
             cache_video(tensor=video[None], save_file=str(out / 'videos' / f'{sid}.mp4'),
                         fps=16, nrow=1, normalize=True, value_range=(-1, 1))

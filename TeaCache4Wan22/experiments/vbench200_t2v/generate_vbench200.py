@@ -23,7 +23,7 @@ PROJECT_DIR = SCRIPT_DIR.parents[1]
 REPOSITORY_DIR = PROJECT_DIR.parent
 PROMPTS_PATH = REPOSITORY_DIR / "Vbench200" / "prompts.jsonl"
 VALIDATOR = PROJECT_DIR / "scripts" / "validate_prepared_tree.py"
-EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
+EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
 THREAD_ENV = {
     "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1",
     "MKL_NUM_THREADS": "1", "NUMEXPR_NUM_THREADS": "1",

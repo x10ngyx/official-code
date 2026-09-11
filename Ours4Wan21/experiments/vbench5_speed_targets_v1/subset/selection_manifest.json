@@ -1,0 +1,66 @@
+{
+  "schema": "ours4wan21_vbench200_five_prompt_subset_v1",
+  "status": "frozen",
+  "prompt_count": 5,
+  "source": {
+    "prompts": "/home/star/xiongyuxiang/tmp/work/official-code/Vbench200/prompts.jsonl",
+    "prompts_sha256": "053087939c0f09755e8586a22680eb42f29cc79a3916c937944db4653f7fdc51",
+    "full_info": "/home/star/xiongyuxiang/tmp/work/official-code/Vbench200/VBench200_full_info.json",
+    "full_info_sha256": "418b57d9d73054b02fefa5b58eee068fe316b33f1b3700b75a0e6522f5b588af"
+  },
+  "selection": {
+    "objective": "maximize the number of distinct VBench metadata dimensions covered by five records",
+    "algorithm": "exact dynamic programming over dimension bitmasks",
+    "tie_break": "lexicographically earliest ordered sample_id tuple",
+    "quality_or_runtime_blind": true
+  },
+  "selected_sample_ids": [
+    "vbench200_001",
+    "vbench200_016",
+    "vbench200_056",
+    "vbench200_135",
+    "vbench200_159"
+  ],
+  "selected_source_unique_indices_1based": [
+    4,
+    81,
+    258,
+    687,
+    778
+  ],
+  "covered_metadata_dimensions": [
+    "aesthetic_quality",
+    "background_consistency",
+    "dynamic_degree",
+    "imaging_quality",
+    "motion_smoothness",
+    "multiple_objects",
+    "overall_consistency",
+    "scene",
+    "subject_consistency",
+    "temporal_flickering"
+  ],
+  "omitted_metadata_dimensions": [
+    "appearance_style",
+    "color",
+    "human_action",
+    "object_class",
+    "spatial_relationship",
+    "temporal_style"
+  ],
+  "custom_input_dimensions": [
+    "subject_consistency",
+    "background_consistency",
+    "motion_smoothness",
+    "dynamic_degree",
+    "aesthetic_quality",
+    "imaging_quality",
+    "temporal_flickering",
+    "human_action",
+    "temporal_style",
+    "overall_consistency"
+  ],
+  "score_scope": "official VBench custom-input implementations; unweighted mean of ten raw dimensions",
+  "official_full_vbench_score": false,
+  "warning": "Five prompts cannot cover all 16 VBench dimensions. This is a small matched diagnostic subset, not an official full VBench or VBench200 score."
+}

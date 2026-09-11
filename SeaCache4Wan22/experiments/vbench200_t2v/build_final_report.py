@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
+EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
 
 
 def external(path: Path) -> Path:

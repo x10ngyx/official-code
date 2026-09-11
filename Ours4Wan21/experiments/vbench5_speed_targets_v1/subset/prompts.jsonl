@@ -1,0 +1,5 @@
+{"prompt_en":"A tranquil tableau of alley","source_unique_index_1based":4,"source_record_indices_1based":[4],"dimension":["temporal_flickering"],"sample_id":"vbench200_001"}
+{"prompt_en":"a cow and an elephant","source_unique_index_1based":81,"source_record_indices_1based":[81],"dimension":["multiple_objects"],"auxiliary_info":{"multiple_objects":{"object":"cow and elephant"}},"sample_id":"vbench200_016"}
+{"prompt_en":"a person swimming in ocean","source_unique_index_1based":258,"source_record_indices_1based":[258],"dimension":["subject_consistency","dynamic_degree","motion_smoothness"],"sample_id":"vbench200_056"}
+{"prompt_en":"A panda standing on a surfboard in the ocean in sunset.","source_unique_index_1based":687,"source_record_indices_1based":[687],"dimension":["overall_consistency","aesthetic_quality","imaging_quality"],"sample_id":"vbench200_135"}
+{"prompt_en":"arch","source_unique_index_1based":778,"source_record_indices_1based":[780],"dimension":["scene","background_consistency"],"auxiliary_info":{"scene":{"scene":{"scene":"arch"}}},"sample_id":"vbench200_159"}

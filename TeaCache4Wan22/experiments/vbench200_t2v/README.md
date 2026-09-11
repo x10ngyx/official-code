@@ -33,7 +33,7 @@ WAN22_SETUP_PYTHON=/home/huteng/yes/envs/wan2.2/bin/python \
 
 ```bash
 bash launch_threshold_suite_029_045_068.sh \
-  /all/yiran07-disk3/huteng_data/exp/<suite-name>
+  /mnt/hdd/xiongyuxiang/tmp/exp/<suite-name>
 ```
 
 launcher 会在创建结果目录或启动 GPU worker 前完成 fail-closed preflight：prepared

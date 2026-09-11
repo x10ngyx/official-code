@@ -25,6 +25,7 @@ NUM_SOURCE_PROMPTS = 5000
 NUM_SELECTED_PROMPTS = 3000
 CANDIDATES_PER_PROMPT = 3
 NUM_CANDIDATES = NUM_SELECTED_PROMPTS * CANDIDATES_PER_PROMPT
+STAGE1_NUM_SELECTED_PROMPTS = 1000
 SEACACHE_NUM_SELECTED_PROMPTS = 1000
 SEACACHE_CANDIDATES_PER_PROMPT = 3
 SEACACHE_NUM_CANDIDATES = (
@@ -64,6 +65,125 @@ PROTOCOL = {
     "offload_model": False,
     "t5_cpu": False,
 }
+
+
+def random_plan_split(prompt_rank: int) -> str:
+    """Return an 80/10/10 split for both stage 1 and the complete plan.
+
+    The first 1,000 prompts form the independently usable first release.  The
+    remaining 2,000 prompts add 1,600/200/200 examples, so the complete 3,000
+    prompt plan keeps the same 2,400/300/300 totals.
+    """
+
+    if not 0 <= prompt_rank < NUM_SELECTED_PROMPTS:
+        raise ValueError(f"prompt rank outside random-plan range: {prompt_rank}")
+    if prompt_rank < STAGE1_NUM_SELECTED_PROMPTS:
+        return "train" if prompt_rank < 800 else ("val" if prompt_rank < 900 else "test")
+    return "train" if prompt_rank < 2600 else ("val" if prompt_rank < 2800 else "test")
+
+
+def _numeric_profile(values: Iterable[float]) -> dict[str, float | int]:
+    materialized = sorted(float(value) for value in values)
+    if not materialized:
+        raise ValueError("numeric profile requires at least one value")
+    return {
+        "count": len(materialized),
+        "min": materialized[0],
+        "mean": sum(materialized) / len(materialized),
+        "median": materialized[len(materialized) // 2],
+        "max": materialized[-1],
+    }
+
+
+def _uniform_ks(values: Iterable[float], lower: float, upper: float) -> float:
+    materialized = sorted((float(value) - lower) / (upper - lower) for value in values)
+    count = len(materialized)
+    if not count:
+        raise ValueError("uniform KS check requires at least one value")
+    return max(
+        max((index + 1) / count - value, value - index / count)
+        for index, value in enumerate(materialized)
+    )
+
+
+def _categorical_drift(
+    stage_values: Iterable[Any], full_values: Iterable[Any]
+) -> dict[str, float | int]:
+    stage = Counter(str(value or "") for value in stage_values)
+    full = Counter(str(value or "") for value in full_values)
+    stage_count = sum(stage.values())
+    full_count = sum(full.values())
+    categories = set(stage) | set(full)
+    differences = [
+        abs(stage.get(key, 0) / stage_count - full.get(key, 0) / full_count)
+        for key in categories
+    ]
+    return {
+        "category_count_full": len(full),
+        "category_count_stage1": len(stage),
+        "max_absolute_share_difference": max(differences, default=0.0),
+        "total_variation_distance": 0.5 * sum(differences),
+    }
+
+
+def stage1_distribution_audit(
+    rows: list[dict[str, Any]], selected_prompts: list[dict[str, Any]]
+) -> dict[str, Any]:
+    stage_rows = rows[:STAGE1_NUM_SELECTED_PROMPTS * CANDIDATES_PER_PROMPT]
+    stage_prompts = selected_prompts[:STAGE1_NUM_SELECTED_PROMPTS]
+    categorical_fields = (
+        "part",
+        "content_group",
+        "length_group",
+        "motion_group",
+        "topic_tag",
+    )
+    return {
+        "design": (
+            "first_1000_of_uniform_without_replacement_3000_of_5000; "
+            "release membership is independent of prompt content"
+        ),
+        "prompt_count": len(stage_prompts),
+        "candidate_count": len(stage_rows),
+        "prompt_split_counts": dict(
+            Counter(random_plan_split(index) for index in range(len(stage_prompts)))
+        ),
+        "categorical_prompt_drift_vs_full": {
+            field: _categorical_drift(
+                (row.get(field) for row in stage_prompts),
+                (row.get(field) for row in selected_prompts),
+            )
+            for field in categorical_fields
+        },
+        "target_speedup": {
+            "stage1": _numeric_profile(row["target_speedup"] for row in stage_rows),
+            "full": _numeric_profile(row["target_speedup"] for row in rows),
+            "stage1_ks_vs_declared_uniform": _uniform_ks(
+                (row["target_speedup"] for row in stage_rows),
+                TARGET_SPEEDUP_MIN,
+                TARGET_SPEEDUP_MAX,
+            ),
+            "full_ks_vs_declared_uniform": _uniform_ks(
+                (row["target_speedup"] for row in rows),
+                TARGET_SPEEDUP_MIN,
+                TARGET_SPEEDUP_MAX,
+            ),
+        },
+        "q": {
+            "stage1": _numeric_profile(row["q"] for row in stage_rows),
+            "full": _numeric_profile(row["q"] for row in rows),
+            "stage1_ks_vs_declared_uniform": _uniform_ks(
+                (row["q"] for row in stage_rows), Q_MIN, Q_MAX
+            ),
+            "full_ks_vs_declared_uniform": _uniform_ks(
+                (row["q"] for row in rows), Q_MIN, Q_MAX
+            ),
+        },
+        "reference_point_count_drift_vs_full": _categorical_drift(
+            (row["interior_reference_point_count"] for row in stage_rows),
+            (row["interior_reference_point_count"] for row in rows),
+        ),
+    }
 
 
 def sha256(path: Path) -> str:
@@ -214,7 +334,7 @@ def build_plan(
     selected = selector.sample(pool, NUM_SELECTED_PROMPTS)
     rows: list[dict[str, Any]] = []
     for prompt_rank, prompt in enumerate(selected):
-        split = "train" if prompt_rank < 2400 else ("val" if prompt_rank < 2700 else "test")
+        split = random_plan_split(prompt_rank)
         for local_index in range(CANDIDATES_PER_PROMPT):
             release_index = len(rows)
             target_seed = seed + 3_000_001 * (release_index + 1)
@@ -291,6 +411,10 @@ def build_plan(
         "candidates_per_prompt": CANDIDATES_PER_PROMPT,
         "split_counts": dict(Counter(row["split"] for row in rows)),
         "prompt_split_counts": {"train": 2400, "val": 300, "test": 300},
+        "stage1_prompt_count": STAGE1_NUM_SELECTED_PROMPTS,
+        "stage1_candidate_count": STAGE1_NUM_SELECTED_PROMPTS * CANDIDATES_PER_PROMPT,
+        "stage1_prompt_split_counts": {"train": 800, "val": 100, "test": 100},
+        "stage1_distribution_audit": stage1_distribution_audit(rows, selected),
         "shard_counts": dict(Counter(row["shard_index"] for row in rows)),
         "target_speedup_distribution": "continuous_uniform_[1.5,3.5]",
         "q_distribution": "continuous_uniform_[0.2,1.0]",
@@ -545,6 +669,8 @@ def validate_plan(rows: list[dict[str, Any]]) -> None:
             raise ValueError("prompt rows must remain contiguous in selection order")
         if [int(row.get("candidate_index_for_prompt", -1)) for row in group] != [0, 1, 2]:
             raise ValueError("candidate indices must be 0,1,2 inside each prompt")
+        if {str(row.get("split")) for row in group} != {random_plan_split(prompt_rank)}:
+            raise ValueError("prompt split does not match the stage-aware 80/10/10 schedule")
     for row in rows:
         if row.get("schema") != SCHEMA_PLAN or row.get("calibration_status") != "pending":
             raise ValueError("plan row schema/calibration mismatch")

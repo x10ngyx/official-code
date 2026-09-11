@@ -379,6 +379,7 @@ def _capturing_t2v_generate(
     generator.manual_seed(seed)
     if self.t5_cpu:
         raise ValueError("frozen Wan2.1 data protocol requires T5 on GPU")
+    self.text_encoder.model.to(self.device)
     context = self.text_encoder([input_prompt], self.device)
     context_null = self.text_encoder([n_prompt], self.device)
     noise = [torch.randn(*target_shape, dtype=torch.float32, device=self.device, generator=generator)]
@@ -482,6 +483,7 @@ def create_pipeline(wan21_root: Path, checkpoint_dir: Path) -> tuple[Any, float,
         use_usp=False,
         t5_cpu=False,
     )
+    pipeline.text_encoder.model.to(pipeline.device)
     if pipeline.param_dtype != torch.bfloat16 or pipeline.t5_cpu:
         raise RuntimeError("constructed pipeline violates BF16/T5-GPU protocol")
     if torch.cuda.is_available():

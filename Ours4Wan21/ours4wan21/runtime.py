@@ -44,7 +44,9 @@ class Controller(reference.SeaCacheController):
             self.policy.reset_measurements()
         group = latent_group(self.policy.mode)
         from .latent_features import LatentFeatureHistory
-        self.feature_history = LatentFeatureHistory([group]) if group else None
+        from .bloc_features import CompactHistory, GROUPS as BLOC_GROUPS
+        self.feature_history = (CompactHistory(group.removeprefix('bloc_')) if group in BLOC_GROUPS
+                                else LatentFeatureHistory([group]) if group else None)
         self.current_latent_feature = None
         self.feature_wall_seconds = []
         self.used = {'cond': 0, 'uncond': 0}
@@ -57,7 +59,8 @@ class Controller(reference.SeaCacheController):
         with torch.autocast(device_type=latent.device.type, enabled=False):
             values = self.feature_history.observe(latent, step, self.scheduler_sigmas[step].item())
             # CPU state serialization/normalization uses the same FP32 values as offline.
-            self.current_latent_feature = values[latent_group(self.policy.mode)][0].cpu()
+            value = values[latent_group(self.policy.mode)] if isinstance(values, dict) else values
+            self.current_latent_feature = value[0].cpu()
         self.feature_wall_seconds.append(time.perf_counter()-started)
 
     def feature_overhead(self):

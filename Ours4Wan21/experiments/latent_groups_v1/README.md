@@ -1,6 +1,6 @@
 # Wan2.1：两个标量对照与十个 latent 实验组
 
-`run.sh`按阶段顺序运行12组；第二参数可指定单组。`CANDIDATES.md`定义全部公式与时序；`validate.py`是CPU合成数据端到端验收。结果写外部exp，模型写workspace/models，项目experiment_results仅保存链接。不会启动本机正式实验。
+`run.sh`按阶段顺序运行12组；第二参数可指定单组。`CANDIDATES.md`定义全部公式与时序；`validate.py`是CPU合成数据端到端验收。结果写外部exp，模型写workspace/models，项目experiment_results仅保存链接。本次正式任务使用本机四卡编排入口，实时状态以项目`PROGRESS.md`和外部结果完成标记为准。
 
 先按父README第1节配置远端环境，按第3节冻结已有random3000得到`COLLECTION_ROOT`和`SELECTION_DIR`。所有12组必须使用同一selection；scalar5/SEA7不读取latent。训练仍是400epoch、batch256、3层256、seed42、Exact-K与终局PSNR，保留原prompt split、仅train拟合normalizer。
 
@@ -16,6 +16,17 @@ CUDA_VISIBLE_DEVICES=0 bash experiments/latent_groups_v1/run.sh train all
 CUDA_VISIBLE_DEVICES=0 bash experiments/latent_groups_v1/run.sh analyze all
 ```
 
+本机有多张空闲GPU时，可用确定性分片入口并行提取；每条轨迹只由一个worker写入，全部worker完成后统一复核3000条身份、动作、形状、有限值和输出SHA，再写`COMPLETE.json`：
+
+```bash
+export FEATURE_GPU_IDS="0 1 2 3"
+bash experiments/latent_groups_v1/run_features_parallel.sh
+# 中断后使用同一SUITE_NAME和GPU数量续跑：
+RESUME_FEATURES=1 bash experiments/latent_groups_v1/run_features_parallel.sh
+```
+
+并行worker的日志和完成标记保存在外部feature结果的`workers/`；它们不改变特征定义或selection。续跑会对已存在行重新核对原始latent SHA，因此只应在真实中断后使用。
+
 `features`需要原trace的50个`step_records`和它们指向的FP16 `[16,21,60,104]`候选输入latent、真实sigma。不要使用输出latent或baseline latent。原absolute路径需在远端有效，与现有采集cache合同一致。特征提取不重新生成/解码视频，按步流式读取，不把3000条原latent全部载入内存；中间只保存小特征及原文件SHA。该步骤有大量磁盘读取和FFT/quantile运算，CPU可能较慢，尚无远端实测耗时。
 
 若特征提取中断，可用`RESUME_FEATURES=1 bash experiments/latent_groups_v1/run.sh features`；已完成轨迹会核验输入SHA并复用。完整feature cache拒绝重复写入。`cache/train/analyze`均为新目录入口，训练尚无resume；重复实验改`SUITE_NAME`。每组训练cache约 `150000 × 输入维数 × 4 × 2` bytes（state/next_state），最大1031维约1.24GB，另需训练内存及各epoch权重空间。各组第一层参数量不同，不能宣称同参数比较。
@@ -27,6 +38,30 @@ CUDA_VISIBLE_DEVICES=1 bash experiments/latent_groups_v1/run.sh train sea7_cache
 ```
 
 `analyze`为每组生成全400epoch指标曲线、post300验证集动作/Q稳定性普查、排名及`selected_model.pt`。沿用父README第5节规则，test和VBench不参与选择。
+
+四卡正式长训可在feature cache完成后使用统一编排入口。它先顺序构建12份cache，随后把每张GPU固定分配3组；每组必须先完整训练400 epoch并通过marker/checkpoint验收，才在同卡执行post300分析。训练不可resume；已有半程目录会fail-closed并要求改用新的`SUITE_NAME`，不会覆盖或冒充完整结果。
+
+```bash
+python experiments/latent_groups_v1/run_training_suite.py \
+  --collection-root "$COLLECTION_ROOT" --selection-dir "$SELECTION_DIR" \
+  --suite-name "$SUITE_NAME" --gpus 0 1 2 3
+```
+
+编排记录位于外部`${SUITE_NAME}_orchestration/`，每组cache/train/analyze仍是独立结果目录并由`experiment_results/`链接；模型checkpoint只写workspace的`models/`。
+
+全部12组分析完成后，用跨组审计入口复核共同selection/source/split/超参数、每组400条有限指标、400个checkpoint及selected checkpoint SHA，并生成长表、汇总表和技术报告源材料：
+
+```bash
+python experiments/latent_groups_v1/analyze_training_suite.py \
+  --suite-name "$SUITE_NAME" \
+  --output-dir "$EXP_BASE/${SUITE_NAME}_training_readout"
+```
+
+跨组结论仅描述离线训练与post300稳定性；单seed、输入维数/参数量差异以及未执行闭环VBench均须在报告中保留，不能用训练loss直接宣布视频质量或速度赢家。
+
+`run_after_features.sh`可在独立tmux中等待feature `COMPLETE.json`，随后自动执行cache→四卡训练/分析→跨组审计→canonical报告artifact；如果feature会话异常退出且没有完成标记，它会停止而不会启动训练。
+
+`build_training_report.py --readout-dir <..._training_readout>`把已验证CSV/JSON组装为canonical `artifact.json`；随后按Data Analytics portable builder生成单文件`report.html`。报告包含末50轮actor横比、actor/Q训练轨迹、post300稳定性散点、精确摘要表、指标定义、限制和后续闭环验收边界。
 
 先按父README第6节生成或确认同协议、同prompt、同物理GPU的VBench200 baseline，然后：
 

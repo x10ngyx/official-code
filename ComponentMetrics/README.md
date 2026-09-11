@@ -5,9 +5,12 @@ Shared instrumentation used by the method packages in this repository.
 - `component_timing.py` records CUDA-event and host spans for T5 calls and VAE
   decode calls without synchronizing inside the measured pipeline.
 - `component_flops.py` profiles fixed-shape UMT5 encoder forwards and Wan VAE
-  decode with the locked Calflops implementation. For Calflops 0.3.2 it also
-  installs an auditable compatibility hook for Wan VAE's tuple-valued
-  upsampling scale factor, counted as one operation per output element.
+  decode with the locked Calflops implementation and the auditable compatibility
+  hook described below.
+- `calflops_loader.py` keeps Calflops at version 0.3.2 and installs a scoped
+  compatibility hook for its broken tuple `scale_factor` upsample counter;
+  interpolation is counted as one FLOP per output element and the patch name
+  is recorded in profile provenance.
 - `fixed_protocol.py` rejects any Wan2.1-1.3B invocation that differs from the
   workspace-fixed model, sampling, memory, distributed, or prompt-extension
   settings.

@@ -11,7 +11,12 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from .collector import all_baselines_complete, baseline_paths, unique_prompt_rows
+from .collector import (
+    all_baselines_complete,
+    baseline_paths,
+    resolve_prompt_limit,
+    unique_prompt_rows,
+)
 from .manifest import manifest_contract, read_jsonl, validate_candidate_manifest
 from .paths import require_result_path
 from .publisher import candidate_paths, load_completion
@@ -65,6 +70,12 @@ def read_score(path: Path) -> dict[str, Any]:
     return payload
 
 
+def quality_root_for(parent: Path, candidate_count: int, full_candidate_count: int) -> Path:
+    if candidate_count == full_candidate_count:
+        return parent / "quality"
+    return parent / "quality" / "stages" / f"prefix_{candidate_count:09d}"
+
+
 def evaluate(
     *,
     manifest: Path,
@@ -72,6 +83,7 @@ def evaluate(
     runner: Path,
     vbench_python: Path,
     vbench_cache: Path,
+    prompt_limit: int | None = None,
 ) -> dict[str, Any]:
     manifest = manifest.expanduser().resolve(strict=True)
     parent = require_result_path(parent)
@@ -80,18 +92,22 @@ def evaluate(
     vbench_cache = vbench_cache.expanduser().resolve(strict=True)
     rows = read_jsonl(manifest)
     validate_candidate_manifest(rows)
-    expected_candidate_count = int(manifest_contract(rows)["candidate_count"])
-    ready, missing = all_baselines_complete(rows, parent)
+    contract = manifest_contract(rows)
+    full_prompt_count = int(contract["selected_prompt_count"])
+    full_candidate_count = int(contract["candidate_count"])
+    limit = resolve_prompt_limit(rows, prompt_limit)
+    candidates_per_prompt = full_candidate_count // full_prompt_count
+    expected_candidate_count = limit * candidates_per_prompt
+    target_rows = rows[:expected_candidate_count]
+    ready, missing = all_baselines_complete(rows, parent, limit)
     if not ready:
         raise RuntimeError(f"VBench requires all baselines; missing={len(missing)}")
-    if len(rows) != expected_candidate_count or any(
-        load_completion(parent, row) is None for row in rows
-    ):
+    if any(load_completion(parent, row) is None for row in target_rows):
         raise RuntimeError(
             f"VBench requires all {expected_candidate_count} completed candidates"
         )
 
-    quality_root = parent / "quality"
+    quality_root = quality_root_for(parent, expected_candidate_count, full_candidate_count)
     comparison_path = quality_root / "vbench_summary.json"
     if comparison_path.is_file():
         payload = json.loads(comparison_path.read_text(encoding="utf-8"))
@@ -101,7 +117,7 @@ def evaluate(
 
     staging = quality_root / "vbench_staging"
     baseline_map: dict[str, str] = {}
-    for row in unique_prompt_rows(rows):
+    for row in unique_prompt_rows(rows)[:limit]:
         name = f"baseline_{row['sample_id']}.mp4"
         ensure_link(
             baseline_paths(parent, str(row["sample_id"]))["video"],
@@ -109,7 +125,7 @@ def evaluate(
         )
         baseline_map[name] = str(row["prompt"])
     candidate_map: dict[str, str] = {}
-    for row in rows:
+    for row in target_rows:
         name = f"candidate_{row['trajectory_id']}.mp4"
         ensure_link(
             candidate_paths(parent, int(row["shard_index"]), str(row["trajectory_id"]))[
@@ -161,6 +177,9 @@ def evaluate(
         "warning": baseline_score["warning"],
         "baseline_video_count": len(baseline_map),
         "candidate_video_count": len(candidate_map),
+        "prompt_limit": limit,
+        "manifest_prompt_count": full_prompt_count,
+        "manifest_candidate_count": full_candidate_count,
         "baseline": {
             "vbench_score": baseline_score["vbench_score"],
             "path": str(baseline_score_path.resolve()),
@@ -186,6 +205,7 @@ def main() -> None:
     parser.add_argument("--runner", type=Path, required=True)
     parser.add_argument("--vbench-python", type=Path, required=True)
     parser.add_argument("--vbench-cache", type=Path, required=True)
+    parser.add_argument("--prompt-limit", type=int)
     args = parser.parse_args()
     print(
         json.dumps(
@@ -195,6 +215,7 @@ def main() -> None:
                 runner=args.runner,
                 vbench_python=args.vbench_python,
                 vbench_cache=args.vbench_cache,
+                prompt_limit=args.prompt_limit,
             ),
             ensure_ascii=False,
             indent=2,

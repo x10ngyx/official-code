@@ -65,6 +65,52 @@ def load_features(root, row, trace_path, actions, *, index=None):
     return value['features']
 
 
+def _validate_saved_row(target, row, trace_path, actions, *, validate_raw):
+    value = torch.load(target, map_location='cpu', weights_only=True)
+    if (value['trajectory_id'] != row['trajectory_id'] or value['sample_id'] != row['sample_id'] or
+            value['split'] != row['split'] or value['trace_sha256'] != sha256(trace_path) or
+            not torch.equal(value['actions'], actions)):
+        raise ValueError('saved feature row is bound to another trajectory/trace/actions')
+    if validate_raw and any(sha256(record['path']) != record['sha256'] for record in value['raw_inputs']):
+        raise ValueError('saved feature row raw input changed')
+    for group, (dim, _) in GROUPS.items():
+        features = value['features'][group]
+        if features.shape != (50, dim) or not torch.isfinite(features).all() or features[0].any():
+            raise ValueError('invalid saved feature tensor or initial history sentinel')
+    return value
+
+
+def _finalize(out, config, paths, num_workers):
+    markers = []
+    for worker_index in range(num_workers):
+        marker_path = out / 'workers' / f'worker_{worker_index:03d}.json'
+        if not marker_path.is_file():
+            raise ValueError(f'missing feature worker completion: {marker_path}')
+        marker = json.loads(marker_path.read_text())
+        expected_count = sum(index % num_workers == worker_index for index in range(len(paths)))
+        if (marker.get('schema') != 'ours21_feature_worker_v1' or
+                marker.get('worker_index') != worker_index or marker.get('num_workers') != num_workers or
+                marker.get('selection_sha256') != config['selection_sha256'] or
+                marker.get('trajectories') != expected_count):
+            raise ValueError(f'feature worker completion mismatch: {marker_path}')
+        markers.append(marker_path)
+    entries = {}
+    for index, path in enumerate(paths):
+        row, decisions, quality, sources = load_completion(path)
+        actions = episode(decisions, quality, 'sea7')['action']
+        target = out / 'rows' / f'{index:04d}.pt'
+        if not target.is_file():
+            raise ValueError(f'missing feature row: {target}')
+        _validate_saved_row(target, row, sources[1], actions, validate_raw=False)
+        entries[row['trajectory_id']] = dict(file=str(target.relative_to(out)), sha256=sha256(target))
+    if len(entries) != len(paths):
+        raise ValueError('feature cache trajectory coverage mismatch')
+    dump(out / 'index.json', dict(**config, rows=entries,
+        worker_completion_sha256={path.name: sha256(path) for path in markers}))
+    dump(out / 'COMPLETE.json', dict(status='complete', trajectories=len(entries),
+        workers=num_workers, index_sha256=sha256(out / 'index.json')))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--collection-root', type=Path, required=True)
@@ -72,10 +118,24 @@ def main():
     p.add_argument('--output-dir', type=Path, required=True)
     p.add_argument('--device', default='cpu')
     p.add_argument('--resume', action='store_true')
+    p.add_argument('--initialize-only', action='store_true')
+    p.add_argument('--finalize-only', action='store_true')
+    p.add_argument('--worker-index', type=int)
+    p.add_argument('--num-workers', type=int, default=1)
     a = p.parse_args()
+    if a.num_workers < 1:
+        p.error('--num-workers must be positive')
+    if a.worker_index is not None and not 0 <= a.worker_index < a.num_workers:
+        p.error('--worker-index must be in [0, num-workers)')
+    if a.initialize_only and (a.resume or a.finalize_only or a.worker_index is not None):
+        p.error('--initialize-only starts a fresh cache and cannot be combined with resume/finalize/worker')
+    if a.finalize_only and (not a.resume or a.worker_index is not None):
+        p.error('--finalize-only requires --resume and no --worker-index')
+    if a.num_workers > 1 and a.worker_index is None and not (a.initialize_only or a.finalize_only):
+        p.error('parallel extraction requires --initialize-only, a --worker-index, or --finalize-only')
     paths = selected_paths(a.selection, a.collection_root)
     config = dict(schema='ours21_features_v1', selection_sha256=sha256(a.selection),
-                  contracts={g:contract(g) for g in GROUPS})
+                  contracts={g:contract(g) for g in GROUPS}, num_workers=a.num_workers)
     if a.resume:
         out = under(a.output_dir, EXP_ROOT)
         if json.loads((out/'run.json').read_text()) != config:
@@ -85,19 +145,25 @@ def main():
     else:
         out = create_result(a.output_dir, '# Ten candidate feature cache\n\nrun.json freezes selection and definitions; rows/ stores small feature tensors with raw input hashes. index.json and COMPLETE.json finalize the cache. No raw latent copies or model weights. Resume interrupted extraction with --resume.')
         (out/'rows').mkdir()
+        (out/'workers').mkdir()
         dump(out/'run.json', config)
+    if a.initialize_only:
+        print(json.dumps(dict(status='initialized', trajectories=len(paths), workers=a.num_workers)), flush=True)
+        return
+    if a.finalize_only:
+        _finalize(out, config, paths, a.num_workers)
+        print(json.dumps(dict(status='complete', trajectories=len(paths), workers=a.num_workers)), flush=True)
+        return
     entries = {}
-    for i, path in enumerate(paths):
+    selected = [(i, path) for i, path in enumerate(paths)
+                if a.worker_index is None or i % a.num_workers == a.worker_index]
+    for completed, (i, path) in enumerate(selected, 1):
         row, decisions, quality, sources = load_completion(path)
         actions = episode(decisions, quality, 'sea7')['action']
         target = out/'rows'/f'{i:04d}.pt'
         trace_hash = sha256(sources[1])
         if target.exists():
-            value = torch.load(target, map_location='cpu', weights_only=True)
-            if (value['trajectory_id'] != row['trajectory_id'] or value['trace_sha256'] != trace_hash or
-                    not torch.equal(value['actions'], actions) or
-                    any(sha256(r['path']) != r['sha256'] for r in value['raw_inputs'])):
-                raise ValueError('resume source changed')
+            value = _validate_saved_row(target, row, sources[1], actions, validate_raw=True)
         else:
             trace = json.loads(sources[1].read_text())
             features, raw_inputs = extract(trace['step_records'], actions, device=a.device)
@@ -108,6 +174,11 @@ def main():
             torch.save(value, temporary)
             temporary.replace(target)
         entries[row['trajectory_id']] = dict(file=str(target.relative_to(out)),sha256=sha256(target))
-        print(f'features {i+1}/{len(paths)} {row["trajectory_id"]}', flush=True)
-    dump(out/'index.json', dict(**config, rows=entries))
-    dump(out/'COMPLETE.json', dict(status='complete', trajectories=len(entries), index_sha256=sha256(out/'index.json')))
+        label = 0 if a.worker_index is None else a.worker_index
+        print(f'features worker={label} {completed}/{len(selected)} global={i+1}/{len(paths)} {row["trajectory_id"]}', flush=True)
+    worker_index = 0 if a.worker_index is None else a.worker_index
+    dump(out / 'workers' / f'worker_{worker_index:03d}.json', dict(
+        schema='ours21_feature_worker_v1', worker_index=worker_index, num_workers=a.num_workers,
+        selection_sha256=config['selection_sha256'], trajectories=len(selected)))
+    if a.num_workers == 1:
+        _finalize(out, config, paths, a.num_workers)

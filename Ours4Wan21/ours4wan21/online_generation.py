@@ -26,6 +26,7 @@ def generate_jobs(run, jobs_path):
     from .shared import benchmark
     from .overhead import predictor_fields
     from .online_pipeline import check_run
+    from .inference import physical_gpu_uuid
     run=Path(run); manifest=check_run(run); jobs=read(jobs_path)
     jobs=[j for j in jobs if not verified(j['output'],job_identity(j,manifest))]
     if not jobs:
@@ -38,6 +39,9 @@ def generate_jobs(run, jobs_path):
         raise ValueError('requires a 48GB-class GPU with all Wan21 components resident')
     if torch.cuda.mem_get_info(0)[0] < 40*1024**3:
         raise ValueError('generation GPU is not sufficiently free; choose an idle GPU')
+    uuid=physical_gpu_uuid(torch)
+    if any(j.get('expected_gpu_uuid',uuid)!=uuid for j in jobs):
+        raise ValueError('candidate GPU differs from the reused native baseline GPU')
     benchmark()
     from protocol import source_lock,checkpoint,prepare_resident
     from metrics import flops_for_calls
@@ -109,7 +113,7 @@ def generate_jobs(run, jobs_path):
             raise ValueError('invalid complete generate latency')
         dump(out/'trace.json',trace)
         dump(out/'measurement.json',measured)
-        dump(out/'generation.json',dict(identity=identity,gpu_name=prop.name,gpu_uuid=str(prop.uuid),
+        dump(out/'generation.json',dict(identity=identity,gpu_name=prop.name,gpu_uuid=uuid,
             protocol=PROTOCOL,measurement_scope='complete generate, excluding native warmup, model load and export',
             predictor_scope='predictor network separate; nested in DiT/generate; not added twice'))
         cache_video(tensor=video[None],save_file=str(out/'video.mp4'),fps=16,nrow=1,

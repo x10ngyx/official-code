@@ -1,6 +1,6 @@
 # Ours4Wan21 在线微调配置复核
 
-状态：在线管线已实现，远端手册见 `../experiments/online_finetuning_v1/README.md`。用户确定20个joint epochs、e11–e20按actor一致率选点、每4轮VBench20及远端确定prompt；实现按讨论默认采用5epoch预热、tau=.7、beta1/cap20。下文保留参数评估依据；当前执行配置以 `online.json` 和 `online.py show-config` 为准，尚无正式在线实验结果。
+状态：下文保留历史参数讨论。当前用户配置已更新：训练目标1.5–3.5×；R4/R8从原VBench50固定抽20条评测1.8/2.4/3.0×，复用原同卡baseline，不计算VBench。当前执行配置以online.json、online.py show-config及在线手册为准；未启动正式在线实验。
 
 结论：e385 的采集→累计 replay→IQL 续训→checkpoint 选择→评测结构可以复用；原参数是可运行的历史设置，尚无证据证明它能稳定改善离线策略。用户已确定保持框架、每轮20个joint replay epochs、在e11–e20按actor一致率选择checkpoint；VBench20每4轮一次，prompt名单由远端确定。实现默认采用5个critic-only replay epochs、tau=.7与beta1/cap20。离线约200epoch稳定不足以推导在线最优预算，所选20epoch也不表示已经证明最优。
 

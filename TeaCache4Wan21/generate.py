@@ -76,6 +76,13 @@ def load_original_generate(wan21_root: Path) -> ModuleType:
     return module
 
 
+def apply_project_defaults(args: argparse.Namespace) -> argparse.Namespace:
+    """Apply local defaults without overriding explicit upstream CLI choices."""
+    if args.task == "t2v-1.3B" and args.offload_model is None:
+        args.offload_model = False
+    return args
+
+
 def main() -> None:
     wrapper_args, wan_argv = parse_wrapper_args(sys.argv[1:])
     wan21_root = resolve_wan21_root(wrapper_args)
@@ -84,7 +91,7 @@ def main() -> None:
     saved_argv = sys.argv
     try:
         sys.argv = [str(wan21_root / "generate.py"), *wan_argv]
-        args = original._parse_args()
+        args = apply_project_defaults(original._parse_args())
     finally:
         sys.argv = saved_argv
     validate_wan21_t2v_1_3b_args(args)

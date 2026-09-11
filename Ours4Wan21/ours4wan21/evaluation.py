@@ -33,7 +33,7 @@ def main():
     parser.add_argument('--candidate-dir', type=Path, required=True)
     parser.add_argument('--profile', type=Path)
     args = parser.parse_args()
-    if Path(sys.prefix).name != 'wan2.2':
+    if 'wan2.2' not in Path(sys.prefix).name.lower():
         raise ValueError('use conda environment wan2.2')
     shared = benchmark()
     if args.action == 'evaluate':
@@ -51,7 +51,7 @@ def main():
     cm, cr = shared.collect(cand, profile)
     if bm['method'] != 'baseline' or cm['method'] != 'ours':
         raise ValueError('requires native baseline and Ours candidate')
-    for key in ('protocol', 'prompts', 'checkpoint_dir', 'gpu'):
+    for key in ('protocol', 'prompts', 'checkpoint_dir', 'gpu', 'gpu_uuid'):
         if bm[key] != cm[key]:
             raise ValueError('baseline/candidate mismatch: ' + key)
     cr = add_overhead(cand, cr)

@@ -45,11 +45,16 @@ def completed_rows(root, rows, *, require_all=False):
         raise ValueError('empty manifest or duplicate source trajectory')
     paths, available = {}, []
     for row in rows:
-        path = root / 'shards' / f"shard_{row['shard_index']:02d}" / 'candidates' / row['trajectory_id'] / 'CANDIDATE_COMPLETE.json'
-        if not path.is_file():
+        current = root / 'completed' / f"{row['trajectory_id']}.json"
+        legacy = root / 'shards' / f"shard_{row['shard_index']:02d}" / 'candidates' / row['trajectory_id'] / 'CANDIDATE_COMPLETE.json'
+        existing = [path for path in (current, legacy) if path.is_file()]
+        if not existing:
             if require_all:
                 raise ValueError('sampling a larger collection requires all source completions')
             continue
+        if len(existing) != 1:
+            raise ValueError('duplicate completion markers across current and legacy layouts')
+        path = existing[0]
         complete = json.loads(path.read_text())
         if complete.get('schema') != 'ours4wan21_candidate_complete_v3':
             raise ValueError('invalid candidate completion marker')
@@ -58,7 +63,8 @@ def completed_rows(root, rows, *, require_all=False):
             raise ValueError('completion differs from immutable source manifest')
         paths[row['trajectory_id']] = path
         available.append(row)
-    actual = set(root.glob('shards/shard_*/candidates/*/CANDIDATE_COMPLETE.json'))
+    actual = set(root.glob('completed/*.json'))
+    actual.update(root.glob('shards/shard_*/candidates/*/CANDIDATE_COMPLETE.json'))
     if actual != set(paths.values()):
         raise ValueError('completion markers exist outside their registered manifest paths')
     return available, paths
@@ -88,12 +94,18 @@ def main():
 
 def selected_paths(selection, root):
     value = json.loads(Path(selection).read_text())
-    if value.get('schema') != 'ours4wan21_random_subset_v1' or value['selected_count'] != 3000 or len(value['rows']) != 3000:
+    mixed = value.get('schema') == 'ours4wan21_mixed_subset_v1'
+    expected = 3500 if mixed else 3000
+    if (value.get('schema') not in ('ours4wan21_random_subset_v1', 'ours4wan21_mixed_subset_v1')
+            or value['selected_count'] != expected or len(value['rows']) != expected):
         raise ValueError('expected frozen 3000-trajectory selection')
     root = Path(root).resolve(strict=True)
-    if sha256(root / 'manifests/random_runnable.jsonl') != value['source_manifest_sha256']:
+    manifest = 'manifests/mixed_runnable.jsonl' if mixed else 'manifests/random_runnable.jsonl'
+    if sha256(root / manifest) != value['source_manifest_sha256']:
         raise ValueError('selection source manifest changed')
-    paths, seen = [], set()
+    paths, seen, prompts, families, splits = [], set(), {}, Counter(), Counter()
+    manifest_rows = {r['trajectory_id']: r for r in
+                     (json.loads(s) for s in (root/manifest).read_text().splitlines() if s.strip())} if mixed else {}
     for row in value['rows']:
         path = (root / row['complete_path']).resolve(strict=True)
         if not path.is_relative_to(root) or path in seen or sha256(path) != row['complete_sha256']:
@@ -101,10 +113,25 @@ def selected_paths(selection, root):
         original = json.loads(path.read_text())['trajectory_row']
         if any(original[k] != row[k] for k in ('trajectory_id','sample_id','split')):
             raise ValueError('selected identity/split mismatch')
-        if original['policy_family'] != 'random_continuous_seacache_threshold':
+        allowed = ('random_continuous_seacache_threshold', 'linear_increase_seacache_threshold') if mixed else ('random_continuous_seacache_threshold',)
+        if original['policy_family'] not in allowed:
             raise ValueError('selected trajectory is not random')
+        if mixed:
+            source = manifest_rows.get(row['trajectory_id'], {})
+            if any(source.get(k) != original.get(k) for k in ('sample_id','split','policy_family','protocol','trajectory_id')):
+                raise ValueError('mixed completion does not match manifest')
+            if original['sample_id'] in prompts and prompts[original['sample_id']] != original['split']:
+                raise ValueError('mixed prompt split leakage')
+            prompts[original['sample_id']] = original['split']
+            families[original['policy_family']] += 1
+            splits[original['split']] += 1
         paths.append(path)
         seen.add(path)
+    if mixed and (len(manifest_rows) != 3500 or len(prompts) != 1000 or
+                  families != {'random_continuous_seacache_threshold':3000, 'linear_increase_seacache_threshold':500} or
+                  splits != {'train':2800, 'val':350, 'test':350} or
+                  dict(families) != value.get('family_counts') or dict(splits) != value.get('split_counts')):
+        raise ValueError('mixed selection count/family/split contract mismatch')
     return paths
 
 

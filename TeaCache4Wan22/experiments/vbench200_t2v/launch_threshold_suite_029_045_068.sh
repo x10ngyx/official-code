@@ -12,7 +12,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 suite_root=$1
-experiment_root=/all/yiran07-disk3/huteng_data/exp
+experiment_root=/mnt/hdd/xiongyuxiang/tmp/exp
 case "$suite_root/" in
   "$experiment_root"/*/) ;;
   *)

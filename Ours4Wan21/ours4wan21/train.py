@@ -1,6 +1,6 @@
 """Train the local 400-epoch Exact-K/terminal-PSNR IQL configuration."""
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 from pathlib import Path
 import random
@@ -11,7 +11,8 @@ import torch
 from torch.utils.data import DataLoader
 
 from .contracts import (FORCED, MODEL_ROOT, MODES, PROJECT, PROTOCOL, TrainingConfig,
-                        create_result, dump, observation, latent_group, sha256, state_contract, state_names, under)
+                        IQL_PROFILES, training_config, create_result, dump, observation, latent_group,
+                        sha256, state_contract, state_names, under)
 from .data import Transitions
 from .local_iql import (IQLModelConfig, PolicyNet, QNet, ValueNet, _run_epoch,
                         apply_normalizer, compute_normalizer, required_hard_budget_action)
@@ -115,14 +116,23 @@ def make_optimizers(nets, config):
         nets['policy_net'].parameters()))
 
 
-def train(bundle, mode, out, weights, *, config=TrainingConfig(), device='cuda', smoke=False):
-    """smoke is for isolated CPU validation only; production CLI has no hyperparameter overrides."""
+def train(bundle, mode, out, weights, *, config=TrainingConfig(), device='cuda', smoke=False,
+          iql_profile='baseline'):
+    """Production settings must match the explicitly selected versioned IQL profile."""
     validate_bundle(bundle, mode)
-    if not smoke and config != TrainingConfig():
-        raise ValueError('production training settings are frozen to the local SEA7 run')
-    if not smoke and (bundle['manifest'].get('trajectories') != 3000 or
-                      bundle['manifest'].get('selection', {}).get('selected_count') != 3000):
-        raise ValueError('current production plan requires the frozen 3000 random-trajectory subset')
+    expected = training_config(iql_profile, seed=config.seed)
+    if not smoke and config != expected:
+        raise ValueError('production settings differ from the explicit IQL profile')
+    selection = bundle['manifest'].get('selection', {})
+    mixed = selection.get('schema') == 'ours4wan21_mixed_subset_v1'
+    expected_count = 3500 if mixed else 3000
+    if not smoke and (bundle['manifest'].get('trajectories') != expected_count or
+                      selection.get('selected_count') != expected_count):
+        raise ValueError('production requires frozen random3000 or explicit random3000+increase500')
+    if not smoke and mixed and (selection.get('family_counts') != {
+            'random_continuous_seacache_threshold':3000, 'linear_increase_seacache_threshold':500}
+            or selection.get('split_counts') != {'train':2800, 'val':350, 'test':350}):
+        raise ValueError('invalid mixed dataset composition')
     if config.epochs < 1:
         raise ValueError('epochs must be positive')
     weights = under(weights, MODEL_ROOT)
@@ -148,7 +158,7 @@ def train(bundle, mode, out, weights, *, config=TrainingConfig(), device='cuda',
     mc, nets = make_networks(mode, config, device)
     optimizers = make_optimizers(nets, config)
     dump(out / 'config.json', dict(**asdict(config), device=str(device), state=state_contract(mode),
-        smoke_only=smoke, objective='exact-K terminal absolute RGB PSNR',
+        smoke_only=smoke, iql_profile=iql_profile, objective='exact-K terminal absolute RGB PSNR',
         best_checkpoint_metric='validation pi_loss on discretionary rows',
         local_training_lock=json.loads((PROJECT / 'local_training_lock.json').read_text())))
     dump(out / 'dataset_manifest.json', bundle['manifest'])
@@ -169,7 +179,7 @@ def train(bundle, mode, out, weights, *, config=TrainingConfig(), device='cuda',
                 stream.write(json.dumps(row, allow_nan=False) + '\n')
             payload = {key: net.state_dict() for key, net in nets.items()}
             payload.update(schema='ours4wan21_iql_checkpoint_v1', epoch=epoch, model_config=asdict(mc),
-                train_config=asdict(config), state=state_contract(mode), protocol=PROTOCOL,
+                train_config=asdict(config), iql_profile=iql_profile, state=state_contract(mode), protocol=PROTOCOL,
                 normalizer=normalizer, metrics=row, smoke_only=smoke,
                 optimizer_states=[o.state_dict() for o in optimizers],
                 torch_rng_state=torch.get_rng_state(),
@@ -201,9 +211,13 @@ def main():
     parser.add_argument('--output-dir', type=Path, required=True)
     parser.add_argument('--checkpoint-dir', type=Path, required=True)
     parser.add_argument('--device', choices=('cpu', 'cuda'), default='cuda')
+    parser.add_argument('--training-seed', type=int, default=42,
+                        help='training RNG seed only; frozen video generation seed remains 42')
+    parser.add_argument('--iql-profile', choices=IQL_PROFILES, default='baseline',
+                        help='explicit IQL preset; aggressive_v1 changes only tau/beta/weight_max')
     args = parser.parse_args()
     state_names(args.state_mode)
-    if Path(sys.prefix).name != 'wan2.2':
+    if 'wan2.2' not in Path(sys.prefix).name.lower():
         raise ValueError('use conda environment wan2.2')
     complete = json.loads((args.dataset / 'COMPLETE.json').read_text())
     data_path = args.dataset / 'transitions.pt'
@@ -212,7 +226,9 @@ def main():
     bundle = torch.load(data_path, map_location='cpu', weights_only=False)
     if args.device == 'cuda' and (not torch.cuda.is_available() or torch.cuda.device_count() != 1):
         raise ValueError('select one GPU with CUDA_VISIBLE_DEVICES')
-    train(bundle, args.state_mode, args.output_dir, args.checkpoint_dir, device=args.device)
+    train(bundle, args.state_mode, args.output_dir, args.checkpoint_dir,
+          config=training_config(args.iql_profile,seed=args.training_seed), device=args.device,
+          iql_profile=args.iql_profile)
 
 
 if __name__ == '__main__':

@@ -65,7 +65,7 @@ class VideoIntegrationTest(unittest.TestCase):
             self.assertEqual(summary["video_count"], 1)
 
             output = root / "psnr.json"
-            repository_entrypoint = Path(__file__).resolve().parents[3] / "compute_psnr.py"
+            repository_entrypoint = Path(__file__).resolve().parents[1] / "compute_psnr.py"
             subprocess.run(
                 [
                     sys.executable,
@@ -91,7 +91,7 @@ class VideoIntegrationTest(unittest.TestCase):
             self.assertEqual(payload["mean_psnr"], 100.0)
             self.assertEqual(payload["excluded_perfect_frames"], 0)
 
-            legacy_output = root / "legacy_psnr.json"
+            default_output = root / "default_psnr.json"
             subprocess.run(
                 [
                     sys.executable,
@@ -101,7 +101,7 @@ class VideoIntegrationTest(unittest.TestCase):
                     "--candidate",
                     str(candidate),
                     "--output",
-                    str(legacy_output),
+                    str(default_output),
                 ],
                 check=True,
                 env=os.environ.copy(),
@@ -109,11 +109,9 @@ class VideoIntegrationTest(unittest.TestCase):
                 stderr=subprocess.PIPE,
                 text=True,
             )
-            legacy_payload = json.loads(legacy_output.read_text(encoding="utf-8"))
-            self.assertEqual(
-                legacy_payload["method"],
-                "ffmpeg_psnr_filter_psnr_avg_yuv_weighted",
-            )
+            default_payload = json.loads(default_output.read_text(encoding="utf-8"))
+            self.assertEqual(default_payload["protocol_id"], "rgb_full_reference_v1")
+            self.assertEqual(default_payload["method"], "rgb_framewise_psnr_v1")
 
             evaluation_dir = root / "evaluation"
             source_entrypoint = Path(__file__).resolve().parents[1] / "evaluate.py"

@@ -65,6 +65,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--metrics-device", default="auto")
     parser.add_argument("--lpips-batch-size", type=int, default=8)
     parser.add_argument("--metrics-model-cache", type=Path)
+    parser.add_argument(
+        "--prompt-limit",
+        type=int,
+        help="collect the first N manifest prompts; N must be divisible by four",
+    )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--cpu-validate", action="store_true")
     parser.add_argument("--verify-baselines", action="store_true")
@@ -121,18 +126,43 @@ def unique_prompt_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [prompts[index] for index in range(prompt_count)]
 
 
-def selected_rows(rows: list[dict[str, Any]], mode: str, shard: int) -> list[dict[str, Any]]:
+def resolve_prompt_limit(rows: list[dict[str, Any]], prompt_limit: int | None) -> int:
+    prompt_count = int(manifest_contract(rows)["selected_prompt_count"])
+    limit = prompt_count if prompt_limit is None else int(prompt_limit)
+    if not 1 <= limit <= prompt_count:
+        raise ValueError(f"prompt limit must be in [1,{prompt_count}], got {limit}")
+    if limit % NUM_SHARDS:
+        raise ValueError("prompt limit must be divisible by four for balanced shards")
+    return limit
+
+
+def selected_rows(
+    rows: list[dict[str, Any]],
+    mode: str,
+    shard: int,
+    prompt_limit: int | None = None,
+) -> list[dict[str, Any]]:
     if not 0 <= shard < NUM_SHARDS:
         raise ValueError("shard index must be in [0,3]")
     contract = manifest_contract(rows)
+    limit = resolve_prompt_limit(rows, prompt_limit)
     if mode == "baseline":
-        result = [row for row in unique_prompt_rows(rows) if int(row["prompt_rank"]) % NUM_SHARDS == shard]
-        expected = int(contract["baselines_per_shard"])
+        result = [
+            row for row in unique_prompt_rows(rows)[:limit]
+            if int(row["prompt_rank"]) % NUM_SHARDS == shard
+        ]
+        expected = limit // NUM_SHARDS
         if len(result) != expected:
             raise ValueError(f"baseline shard must contain {expected} prompts, got {len(result)}")
         return result
-    result = [row for row in rows if int(row["shard_index"]) == shard]
-    expected = int(contract["candidates_per_shard"])
+    result = [
+        row for row in rows
+        if int(row["prompt_rank"]) < limit and int(row["shard_index"]) == shard
+    ]
+    candidates_per_prompt = int(contract["candidate_count"]) // int(
+        contract["selected_prompt_count"]
+    )
+    expected = limit * candidates_per_prompt // NUM_SHARDS
     if len(result) != expected:
         raise ValueError(f"candidate shard must contain {expected} rows, got {len(result)}")
     return result
@@ -273,23 +303,30 @@ def validate_flops_profile(path: Path) -> dict[str, Any]:
     return payload
 
 
-def all_baselines_complete(rows: list[dict[str, Any]], parent: Path) -> tuple[bool, list[str]]:
+def all_baselines_complete(
+    rows: list[dict[str, Any]],
+    parent: Path,
+    prompt_limit: int | None = None,
+) -> tuple[bool, list[str]]:
+    limit = resolve_prompt_limit(rows, prompt_limit)
     missing = [
         str(row["sample_id"])
-        for row in unique_prompt_rows(rows)
+        for row in unique_prompt_rows(rows)[:limit]
         if not baseline_complete(baseline_paths(parent, str(row["sample_id"])), row)
     ]
     return not missing, missing
 
 
 def cpu_validate(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict[str, Any]:
-    selected = selected_rows(rows, args.mode, args.shard_index)
+    limit = resolve_prompt_limit(rows, args.prompt_limit)
+    selected = selected_rows(rows, args.mode, args.shard_index, limit)
     result = {
         "status": "ok",
         "mode": args.mode,
         "manifest_schema": rows[0]["schema"],
         "manifest_rows": len(rows),
         "selected_rows": len(selected),
+        "prompt_limit": limit,
         "shard_index": args.shard_index,
         "num_shards": args.num_shards,
         "expected_latents": len(selected) * NUM_STEPS,
@@ -297,7 +334,7 @@ def cpu_validate(args: argparse.Namespace, rows: list[dict[str, Any]]) -> dict[s
         "protocol": PROTOCOL,
     }
     if args.mode == "candidate":
-        ready, missing = all_baselines_complete(rows, args.parent_root)
+        ready, missing = all_baselines_complete(rows, args.parent_root, limit)
         result["all_baselines_complete"] = ready
         result["missing_baseline_count"] = len(missing)
     return result
@@ -609,13 +646,14 @@ def main() -> None:
     rows = load_manifest(args.manifest, args.mode)
     if args.mode == "candidate":
         validate_candidate_manifest(rows)
-    selected = selected_rows(rows, args.mode, args.shard_index)
+    args.prompt_limit = resolve_prompt_limit(rows, args.prompt_limit)
+    selected = selected_rows(rows, args.mode, args.shard_index, args.prompt_limit)
     validate_flops_profile(args.flops_profile)
     if args.cpu_validate:
         print(json.dumps(cpu_validate(args, rows), ensure_ascii=False, indent=2))
         return
     if args.verify_baselines:
-        ready, missing = all_baselines_complete(rows, args.parent_root)
+        ready, missing = all_baselines_complete(rows, args.parent_root, args.prompt_limit)
         payload = {"status": "ok" if ready else "incomplete", "missing_count": len(missing), "missing": missing}
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         if not ready:
@@ -625,7 +663,7 @@ def main() -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("GPU collection requires CUDA")
     if args.mode == "candidate":
-        ready, missing = all_baselines_complete(rows, args.parent_root)
+        ready, missing = all_baselines_complete(rows, args.parent_root, args.prompt_limit)
         if not ready:
             raise RuntimeError(f"candidate phase is blocked by {len(missing)} incomplete baselines")
     args.parent_root.mkdir(parents=True, exist_ok=True)
@@ -658,11 +696,17 @@ def main() -> None:
         "shard_index": args.shard_index,
         "num_shards": args.num_shards,
         "selected_count": len(selected),
+        "prompt_limit": args.prompt_limit,
         "protocol": PROTOCOL,
         "full_reference_metrics": metrics_model_info,
         "thread_environment": thread_environment(),
     }
-    config_path = shard_root / f"{args.mode}_config.json"
+    full_prompt_count = int(manifest_contract(rows)["selected_prompt_count"])
+    config_suffix = (
+        "" if args.prompt_limit == full_prompt_count
+        else f"_prefix_{args.prompt_limit:06d}"
+    )
+    config_path = shard_root / f"{args.mode}_config{config_suffix}.json"
     if config_path.exists():
         if not args.resume or read_json(config_path) != config:
             raise ValueError(f"existing shard config differs: {config_path}")

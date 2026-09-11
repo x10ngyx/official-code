@@ -1,12 +1,22 @@
 # Ours4Wan21：远端端到端运行手册
 
-本项目实现 Wan2.1-T2V-1.3B 的随机行为数据采集、训练 cache、离线 IQL、checkpoint 选择/诊断、在线微调，以及 Vbench200/在线VBench20推理和评测。推理基础方法直接使用同级 `SeaCache4Wan21` 的 forward、采样器、SEA 滤波和分支残差缓存。
+## 正式方法与主入口
+
+**Ours4Wan21 的正式方法是 CNN+G1（原始三状态、8×8池化、CNN编码器），正式入口为 `main.py`。**
+完整定义、源码对应、e182权重及训练/推理命令见 [正式方法说明](METHOD.md)。
+`python main.py verify` 可核验真实G1选点和actor；`main.py train/generate` 固定路由G1版本化训练/推理实现。
+
+**下方第1–8节为历史3000轨迹/400epoch MLP远端复现手册。** 其中 `train.py`、`generate.py`、`online.py`、12组特征矩阵、`configs/training.json` 与post300选点均属于旧流程，不是CNN+G1默认配置。
+CNN+G1使用mixed3500、200epoch、τ=.7/β=1.5/cap30、post170选点；G2/G3/G4及16×20 CNN、G1特征MLP是对照/消融。
+
+
+本项目实现 Wan2.1-T2V-1.3B 的随机行为数据采集、训练 cache、离线 IQL、checkpoint 选择/诊断、在线微调，以及 Vbench200/在线20prompt三档推理和评测。推理基础方法直接使用同级 `SeaCache4Wan21` 的 forward、采样器、SEA 滤波和分支残差缓存。
 
 **当前远端进度（用户已确认）：random管线已经生成3000条随机候选轨迹。当前就使用这3000条，不需要继续补到9000条，也不重新抽样。** 一条轨迹是一条完整的50步候选视频；实际prompt数量和train/val/test数量从原始manifest读取，不假定是3000个不同prompt。
 
 **现在从第1节确认环境变量，再直接执行第3节冻结已有数据并整理cache，随后按第4–7节训练、选ckpt和测试。第2节仅保留从零造数据的历史入口，不是这批已有数据的前置步骤。** 本助手尚未读取远端产物，数据状态依据用户报告；cache入口仍会核验completion、真实PSNR/trace及原split，不把“已生成视频”自动当作所有训练材料齐全。
 
-在线微调从已有离线checkpoint继续：**8轮、每轮100条、5个critic预热epoch＋20个joint epoch、e11–e20按actor一致率选点；每4轮VBench20，20个prompt由远端确定**。完整远端步骤见 [在线微调手册](experiments/online_finetuning_v1/README.md)，入口为 `online.py`。该流程与下方离线400epoch流程独立。
+在线微调从已有离线checkpoint继续：**默认8轮（prepare --rounds可冻结预算轮数；当前SEA7 e328为2轮）、每轮100条、5个critic预热epoch＋20个joint epoch、e11–e20按actor一致率选点；目标区间1.5–3.5×；每4轮及末轮从原VBench50固定选20条评测1.8/2.4/3.0×，复用原baseline、不计算VBench**。完整远端步骤见 [在线微调手册](experiments/online_finetuning_v1/README.md)，入口为 `online.py`。该流程与下方离线400epoch流程独立。
 
 ## 目录与交付内容
 
@@ -17,7 +27,7 @@
 | `prepare_features.py` | 一次遍历已有候选raw latent，提取全部10组因果特征，支持中断续提取 |
 | `prepare_data.py` | 读取完成标记和trace，整理训练cache，不加载raw latent |
 | `train.py` | 固定本机配置的400epoch离线IQL |
-| `online.py` | 在线准备、采集、累计replay、续训、恢复与每4轮VBench20 |
+| `online.py` | 在线准备、采集、累计replay、续训、恢复与每4轮20prompt三档质量/性能评测 |
 | `analyze_training.py` | 全训练指标表/曲线，以及本机post300规则的checkpoint选择 |
 | `generate.py` | 匹配baseline或指定策略/K的固定协议推理 |
 | `evaluate.py` | 性能及predictor overhead汇总、PSNR/SSIM/LPIPS和Vbench200评测 |
@@ -32,13 +42,13 @@
 
 ## 1. 远端环境与目录
 
-传输单位是整个 `work/offical-code/`，不能只拷贝Ours4Wan21。需要同级 `SeaCache4Wan21`、`Wan21Benchmark`、`ComponentMetrics`、`CalflopsEvaluation`、`VideoMetrics`、`Vbench200`、`VbenchEvaluation`，以及采集preflight检查的notice/lock依赖。不要对已有实验结果symlink使用`rsync -L`复制大文件。
+传输单位是整个 `work/official-code/`，不能只拷贝Ours4Wan21。需要同级 `SeaCache4Wan21`、`Wan21Benchmark`、`ComponentMetrics`、`CalflopsEvaluation`、`VideoMetrics`、`Vbench200`、`VbenchEvaluation`，以及采集preflight检查的notice/lock依赖。不要对已有实验结果symlink使用`rsync -L`复制大文件。
 
 示例传输（请替换登录与路径；这是操作说明，不会自动发送文件）：
 
 ```bash
 rsync -a --exclude='experiment_results/*' --exclude='__pycache__/' \
-  work/offical-code/ USER@REMOTE:/srv/ours21/work/offical-code/
+  work/official-code/ USER@REMOTE:/srv/ours21/work/official-code/
 ```
 
 另外准备：
@@ -53,7 +63,7 @@ rsync -a --exclude='experiment_results/*' --exclude='__pycache__/' \
 
 ```bash
 export OURS4WAN21_WORKSPACE=/srv/ours21
-export OFFICIAL_CODE="$OURS4WAN21_WORKSPACE/work/offical-code"
+export OFFICIAL_CODE="$OURS4WAN21_WORKSPACE/work/official-code"
 export OURS_PROJECT="$OFFICIAL_CODE/Ours4Wan21"
 export EXP_BASE=/data/exp
 export OURS4WAN21_EXP_BASE="$EXP_BASE"
@@ -78,7 +88,7 @@ conda run --no-capture-output -n wan2.2 python -m unittest discover -s tests -v
 
 VBench依赖和本地权重准备详见同级 `VbenchEvaluation/README.md`；其评测默认本地加载，不应到正式评测时才发现缺权重。所有阶段仍使用wan2.2。
 
-本机不设置环境变量时，结果根仍为 `/all/yiran07-disk3/huteng_data/exp`、模型根为本workspace的`models/`。远端必须在**启动Python之前**设置上述root变量；训练/推理/共享评测桥接都会使用它们。输出须是root下的新目录，不能覆盖旧结果。
+本机不设置环境变量时，结果根为 `/mnt/hdd/xiongyuxiang/tmp/exp`、模型根为本workspace的`models/`。远端必须在**启动Python之前**设置上述root变量；训练/推理/共享评测桥接都会使用它们。输出须是root下的新目录，不能覆盖旧结果。
 
 ## 2. 从零造数据的历史入口（当前已有3000条，跳过本节）
 
@@ -131,7 +141,7 @@ conda run --no-capture-output -n wan2.2 python select_data.py \
   --strategy all-completed --output-dir "$SELECTION_DIR"
 ```
 
-`all-completed`是默认策略，也可以省略`--strategy`。入口读取原 `manifests/random_runnable.jsonl` 和现有 `shards/shard_*/candidates/*/CANDIDATE_COMPLETE.json`：
+`all-completed`是默认策略，也可以省略`--strategy`。入口读取原 `manifests/random_runnable.jsonl` 和当前采集器原子发布的 `completed/<trajectory_id>.json`；为兼容旧归档，也接受旧的 `shards/shard_*/candidates/*/CANDIDATE_COMPLETE.json`，同一轨迹同时出现两种标记会拒绝：
 
 - 原manifest可以只规划3000条，也可以仍规划9000条但其中只完成3000条；不要求其余候选补齐，不要求每prompt有3个完成样本。
 - 当前恰有3000个完成的random轨迹时，原样全部保留，仅按trajectory_id排序，不按质量、速度、prompt或完成先后再次选择。

@@ -1,5 +1,8 @@
 # Official Code
 
+Ours4Wan21 正式方法为 **CNN+G1**，入口 `Ours4Wan21/main.py`，配置、权重和代码对应见 [正式方法说明](Ours4Wan21/METHOD.md)。
+
+
 Evaluation resources and reproducible utilities for diffusion model caching
 research. The local workspace directory and public repository are both named
 `official-code`.

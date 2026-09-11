@@ -45,6 +45,33 @@ class StaticContractTests(unittest.TestCase):
             self.assertNotIn("WAN21_PYTHON", source)
             self.assertNotIn("-n Wan2.1", source)
 
+    def test_random_stage_queue_waits_without_signalling_other_jobs(self) -> None:
+        queue = (
+            DATA_PROJECT
+            / "experiments/random_threshold_collection_v1/queue_after_calibration.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("baselines_ready", queue)
+        self.assertIn("mapping_ready", queue)
+        self.assertIn("nvidia-smi", queue)
+        self.assertIn('launch_4gpu.sh\" candidates', queue)
+        self.assertIn('launch_4gpu.sh\" finalize', queue)
+        self.assertNotIn("kill ", queue)
+        self.assertNotIn("pkill", queue)
+
+    def test_random_finalize_can_skip_vbench_for_scoped_training_data(self) -> None:
+        launcher = (
+            DATA_PROJECT
+            / "experiments/random_threshold_collection_v1/launch_4gpu.sh"
+        ).read_text(encoding="utf-8")
+        audit = (DATA_PROJECT / "src/ours4wan21_data/audit.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("skip_vbench_${vbench_scope}.json", launcher)
+        self.assertIn("skipping VBench by archive control", launcher)
+        self.assertIn("audit_args+=(--skip-vbench)", launcher)
+        self.assertIn('"--skip-vbench"', audit)
+        self.assertIn('"vbench_required": require_vbench', audit)
+
     def test_seacache_grid_matches_frozen_wan22_list(self) -> None:
         payload = json.loads(
             (DATA_PROJECT / "configs/seacache_thresholds.wan22_v1.json").read_text(
@@ -57,6 +84,16 @@ class StaticContractTests(unittest.TestCase):
         )
         self.assertEqual(payload["thresholds_per_prompt"], 3)
         self.assertTrue(payload["sampling_without_replacement"])
+
+    def test_no_offload_runtime_places_t5_on_the_visible_gpu(self) -> None:
+        runtime = (
+            DATA_PROJECT / "src/ours4wan21_data/runtime.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("self.text_encoder.model.to(self.device)", runtime)
+        self.assertIn(
+            "pipeline.text_encoder.model.to(pipeline.device)",
+            runtime,
+        )
 
     def test_filtered_distance_is_collected_and_published_per_cfg_branch(self) -> None:
         controller = (DATA_PROJECT / "src/ours4wan21_data/controller.py").read_text(encoding="utf-8")

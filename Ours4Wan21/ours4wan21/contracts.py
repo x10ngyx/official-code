@@ -1,5 +1,5 @@
 """Versioned state and fixed local training contracts shared by train/inference."""
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import math
 from pathlib import Path
 import hashlib
@@ -12,17 +12,26 @@ PROJECT = Path(__file__).resolve().parents[1]
 OFFICIAL = PROJECT.parent
 WORKSPACE = Path(os.environ.get('OURS4WAN21_WORKSPACE', str(PROJECT.parents[2]))).expanduser().resolve()
 EXP_ROOT = Path(os.environ.get('OURS4WAN21_EXP_BASE', os.environ.get('EXP_BASE',
-                '/all/yiran07-disk3/huteng_data/exp'))).expanduser().resolve()
+                '/mnt/hdd/xiongyuxiang/tmp/exp'))).expanduser().resolve()
 MODEL_ROOT = WORKSPACE / 'models'
 STEPS = 50
 FORCED = (0, 49)
 SCHEMA = 'ours4wan21_exact_k_state_v1'
-from .latent_features import GROUPS, contract as latent_contract
-FEATURE_MODES = {f'sea7_{g}': g for g in GROUPS}
-MODES = ('scalar5', 'sea7', 'sea7_latent', *FEATURE_MODES)
+from .latent_features import GROUPS as LEGACY_GROUPS, contract as legacy_latent_contract
+from .bloc_features import GROUPS as BLOC_GROUPS, contract as bloc_contract
+GROUPS = {**LEGACY_GROUPS, **BLOC_GROUPS}
+
+
+def latent_contract(group):
+    return bloc_contract(group) if group in BLOC_GROUPS else legacy_latent_contract(group)
+
+
+FEATURE_MODES = {f'sea7_{g}': g for g in LEGACY_GROUPS}
+BLOC_MODES = {f'sea7_{g}': g for g in BLOC_GROUPS}
+MODES = ('scalar5', 'sea7', 'sea7_latent', *FEATURE_MODES, *BLOC_MODES)
 
 def latent_group(mode):
-    return FEATURE_MODES.get(mode)
+    return FEATURE_MODES.get(mode, BLOC_MODES.get(mode))
 FIVE = ('cached_valid', 'step_fraction', 'skip_budget_fraction',
         'used_skips_fraction', 'consecutive_skips_fraction')
 SEVEN = ('sea_adjacent_relative_l1', 'sea_accumulated_with_current', *FIVE)
@@ -52,6 +61,27 @@ class TrainingConfig:
     reward_scale: float = 1.
     checkpoint_every: int = 1
     log_every: int = 0
+
+
+IQL_PROFILE_PARAMETERS = {
+    'aggressive_a1_v1': dict(tau=.70, beta=1.5, weight_max=30.),
+    'aggressive_a2_v1': dict(tau=.80, beta=2., weight_max=50.),
+    'aggressive_v1': dict(tau=.90, beta=3., weight_max=100.),
+    'aggressive_a4_v1': dict(tau=.95, beta=5., weight_max=200.),
+}
+IQL_PROFILES = ('baseline', *IQL_PROFILE_PARAMETERS)
+
+
+def training_config(profile='baseline', *, seed=42):
+    """Explicit, versioned IQL experiment; the original defaults stay unchanged."""
+    if profile not in IQL_PROFILES:
+        raise ValueError(f'unknown IQL profile: {profile}')
+    if type(seed) is not int or seed < 0:
+        raise ValueError('training seed must be a nonnegative integer')
+    config = replace(TrainingConfig(), seed=seed)
+    if profile in IQL_PROFILE_PARAMETERS:
+        config = replace(config, **IQL_PROFILE_PARAMETERS[profile])
+    return config
 
 
 def state_names(mode):
@@ -128,5 +158,25 @@ def create_result(path, description):
     path.mkdir(parents=True)
     link.parent.mkdir(parents=True, exist_ok=True)
     link.symlink_to(path, target_is_directory=True)
+    (path / 'README.md').write_text(description + '\n')
+    return path
+
+
+def create_nested_result(path, parent, description):
+    """Create a small child result below one registered external result root.
+
+    Large suites may contain dozens of generation conditions.  Registering the
+    suite root once keeps ``experiment_results/`` useful while preserving the
+    external-results and no-overwrite contracts for every child.
+    """
+    parent = under(parent, EXP_ROOT)
+    path = under(path, parent)
+    link = PROJECT / 'experiment_results' / parent.name
+    if (not parent.is_dir() or not link.is_symlink() or
+            link.resolve() != parent.resolve()):
+        raise ValueError('nested result parent must be a registered experiment result')
+    if path.exists() or path.is_symlink():
+        raise FileExistsError(f'use a fresh nested result path: {path}')
+    path.mkdir(parents=True)
     (path / 'README.md').write_text(description + '\n')
     return path

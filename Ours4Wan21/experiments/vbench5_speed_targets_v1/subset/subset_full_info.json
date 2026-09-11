@@ -1,0 +1,49 @@
+[
+  {
+    "prompt_en": "A tranquil tableau of alley",
+    "dimension": [
+      "temporal_flickering"
+    ]
+  },
+  {
+    "prompt_en": "a cow and an elephant",
+    "dimension": [
+      "multiple_objects"
+    ],
+    "auxiliary_info": {
+      "multiple_objects": {
+        "object": "cow and elephant"
+      }
+    }
+  },
+  {
+    "prompt_en": "a person swimming in ocean",
+    "dimension": [
+      "subject_consistency",
+      "dynamic_degree",
+      "motion_smoothness"
+    ]
+  },
+  {
+    "prompt_en": "A panda standing on a surfboard in the ocean in sunset.",
+    "dimension": [
+      "overall_consistency",
+      "aesthetic_quality",
+      "imaging_quality"
+    ]
+  },
+  {
+    "prompt_en": "arch",
+    "dimension": [
+      "scene",
+      "background_consistency"
+    ],
+    "auxiliary_info": {
+      "scene": {
+        "scene": {
+          "scene": "arch"
+        }
+      }
+    }
+  }
+]

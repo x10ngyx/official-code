@@ -26,7 +26,7 @@ def build_pool(args):
         raise ValueError("registry has fewer than 3000 eligible prompts; supply the full source registry")
     pool=random.Random(config.plan_seed).sample(pool,config.prompt_pool_size)
     isolate_prompts(pool,evaluation,registry,split)
-    out=create_result(args.output_dir,'# Online prompt pool\n\ntrain_prompts.jsonl contains registered training and unseen prompts, excluding offline validation/test and VBench20. sources.json seals inputs; review count before preparation.')
+    out=create_result(args.output_dir,'# Online prompt pool\n\ntrain_prompts.jsonl contains registered training and unseen prompts, excluding offline validation/test and evaluation20. sources.json seals inputs; review count before preparation.')
     (out/'train_prompts.jsonl').write_text(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in pool))
     dump(out/'sources.json',dict(pool_size=len(pool),registry_count=len(registry),
         dataset_sha256=sha256(data),registry_sha256=sha256(args.prompt_registry),

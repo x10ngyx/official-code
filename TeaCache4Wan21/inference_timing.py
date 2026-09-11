@@ -35,10 +35,19 @@ class _PipelineProfiler:
         self.blocks = list(getattr(self.model, "blocks", ()))
         self.block_count = len(self.blocks)
         self.calls: list[dict[str, Any]] = []
+        self.text_encoder_calls: list[dict[str, Any]] = []
+        self.vae_decode_calls: list[dict[str, Any]] = []
         self._active_call: dict[str, Any] | None = None
         self._original_block_forwards: list[Any] = []
         self._original_model_forward = self.model.forward
         self._original_generate = pipeline.generate
+        self._text_encoder = getattr(pipeline, "text_encoder", None)
+        self._text_encoder_class: type[Any] | None = None
+        self._original_text_encoder_call: Any | None = None
+        self._vae = getattr(pipeline, "vae", None)
+        self._original_vae_decode: Any | None = None
+        self._denoising_started_at: float | None = None
+        self._denoising_wall_seconds: float | None = None
         device = getattr(pipeline, "device", None)
         self.cuda_device = (
             torch.device(device)
@@ -60,6 +69,7 @@ class _PipelineProfiler:
 
     def install(self) -> None:
         self.component_timer.install()
+        self._install_stage_wrappers()
         for block in self.blocks:
             original = block.forward
             self._original_block_forwards.append(original)
@@ -74,6 +84,9 @@ class _PipelineProfiler:
 
         @wraps(self._original_model_forward)
         def wrapped_model_forward(*args: Any, **kwargs: Any):
+            if self._denoising_started_at is None:
+                self._synchronize()
+                self._denoising_started_at = time.perf_counter()
             call_index = len(self.calls)
             start_event, end_event = self._new_events()
             record: dict[str, Any] = {
@@ -113,6 +126,7 @@ class _PipelineProfiler:
             finally:
                 self._synchronize()
                 generate_wall_seconds = time.perf_counter() - started
+                self._finish_denoising()
                 self._finalize_calls()
                 self.component_timer.finalize()
                 self._restore()
@@ -123,6 +137,73 @@ class _PipelineProfiler:
                 )
 
         self.pipeline.generate = wrapped_generate
+
+    def _install_stage_wrappers(self) -> None:
+        if self._text_encoder is not None:
+            encoder_class = type(self._text_encoder)
+            original_call = encoder_class.__call__
+            self._text_encoder_class = encoder_class
+            self._original_text_encoder_call = original_call
+
+            @wraps(original_call)
+            def wrapped_text_encoder_call(
+                instance: Any, *args: Any, **kwargs: Any
+            ) -> Any:
+                if instance is not self._text_encoder:
+                    return original_call(instance, *args, **kwargs)
+                self._synchronize()
+                started = time.perf_counter()
+                status = "success"
+                try:
+                    return original_call(instance, *args, **kwargs)
+                except BaseException:
+                    status = "error"
+                    raise
+                finally:
+                    self._synchronize()
+                    self.text_encoder_calls.append(
+                        {
+                            "call_index": len(self.text_encoder_calls),
+                            "wall_seconds": time.perf_counter() - started,
+                            "status": status,
+                        }
+                    )
+
+            encoder_class.__call__ = wrapped_text_encoder_call
+
+        if self._vae is not None and callable(getattr(self._vae, "decode", None)):
+            original_decode = self._vae.decode
+            self._original_vae_decode = original_decode
+
+            @wraps(original_decode)
+            def wrapped_vae_decode(*args: Any, **kwargs: Any) -> Any:
+                self._synchronize()
+                self._finish_denoising(synchronized=True)
+                started = time.perf_counter()
+                status = "success"
+                try:
+                    return original_decode(*args, **kwargs)
+                except BaseException:
+                    status = "error"
+                    raise
+                finally:
+                    self._synchronize()
+                    self.vae_decode_calls.append(
+                        {
+                            "call_index": len(self.vae_decode_calls),
+                            "wall_seconds": time.perf_counter() - started,
+                            "status": status,
+                        }
+                    )
+
+            self._vae.decode = wrapped_vae_decode
+
+    def _finish_denoising(self, *, synchronized: bool = False) -> None:
+        if self._denoising_started_at is None or self._denoising_wall_seconds is not None:
+            return
+        if not synchronized:
+            self._synchronize()
+        self._denoising_wall_seconds = time.perf_counter() - self._denoising_started_at
 
     def _finalize_calls(self) -> None:
         for record in self.calls:
@@ -137,11 +218,18 @@ class _PipelineProfiler:
             record["reuse"] = record["blocks_executed"] == 0
 
     def _restore(self) -> None:
-        self.component_timer.restore()
         self.model.forward = self._original_model_forward
         self.pipeline.generate = self._original_generate
         for block, original in zip(self.blocks, self._original_block_forwards):
             block.forward = original
+        if (
+            self._text_encoder_class is not None
+            and self._original_text_encoder_call is not None
+        ):
+            self._text_encoder_class.__call__ = self._original_text_encoder_call
+        if self._vae is not None and self._original_vae_decode is not None:
+            self._vae.decode = self._original_vae_decode
+        self.component_timer.restore()
 
     def _write(
         self,
@@ -155,6 +243,17 @@ class _PipelineProfiler:
             for record in self.calls
             if record["cuda_seconds"] is not None
         ]
+        text_encoding_seconds = sum(
+            float(record["wall_seconds"]) for record in self.text_encoder_calls
+        )
+        vae_decode_seconds = sum(
+            float(record["wall_seconds"]) for record in self.vae_decode_calls
+        )
+        denoising_seconds = self._denoising_wall_seconds or 0.0
+        stage_accounted_seconds = (
+            text_encoding_seconds + denoising_seconds + vae_decode_seconds
+        )
+        model_forward_cuda_seconds = sum(cuda_values) if cuda_values else None
         component_latency = self.component_timer.summary()
         payload = {
             "schema_version": 2,
@@ -170,9 +269,9 @@ class _PipelineProfiler:
                 "model_forward_cuda_seconds": (
                     "sum of CUDA-event spans for all Wan DiT forward calls"
                 ),
-                "t5_cuda_seconds": "sum of CUDA-event spans for T5 encoder calls",
-                "vae_decode_cuda_seconds": (
-                    "sum of CUDA-event spans for VAE decode calls"
+                "stage_wall_seconds": (
+                    "synchronized, non-overlapping text encoding, denoising-core, "
+                    "VAE decode, and residual pipeline wall-time decomposition"
                 ),
             },
             "cuda_device": str(self.cuda_device) if self.cuda_device is not None else None,
@@ -183,22 +282,41 @@ class _PipelineProfiler:
             ),
             "pipeline_init_wall_seconds": self.init_wall_seconds,
             "pipeline_generate_wall_seconds": generate_wall_seconds,
-            "model_forward_call_count": len(self.calls),
-            "model_forward_cuda_seconds": sum(cuda_values) if cuda_values else None,
-            "dit_cuda_seconds": sum(cuda_values) if cuda_values else None,
             "t5_cuda_seconds": component_latency["t5"]["cuda_seconds"],
-            "vae_decode_cuda_seconds": component_latency["vae_decode"]["cuda_seconds"],
+            "dit_cuda_seconds": model_forward_cuda_seconds,
+            "vae_decode_cuda_seconds": component_latency["vae_decode"][
+                "cuda_seconds"
+            ],
             "component_latency": {
                 "t5": component_latency["t5"],
                 "dit": {
                     "call_count": len(self.calls),
-                    "cuda_seconds": sum(cuda_values) if cuda_values else None,
+                    "cuda_seconds": model_forward_cuda_seconds,
                     "host_span_seconds": sum(
-                        float(record["host_span_seconds"]) for record in self.calls
+                        float(record["host_span_seconds"])
+                        for record in self.calls
                     ),
                 },
                 "vae_decode": component_latency["vae_decode"],
             },
+            "stage_wall_seconds": {
+                "text_encoding": text_encoding_seconds,
+                "denoising_core": denoising_seconds,
+                "vae_decode": vae_decode_seconds,
+                "pipeline_other": generate_wall_seconds - stage_accounted_seconds,
+                "accounted_total": stage_accounted_seconds,
+                "denoising_non_dit_cuda_estimate": (
+                    denoising_seconds - model_forward_cuda_seconds
+                    if model_forward_cuda_seconds is not None
+                    else None
+                ),
+            },
+            "stage_calls": {
+                "text_encoder": self.text_encoder_calls,
+                "vae_decode": self.vae_decode_calls,
+            },
+            "model_forward_call_count": len(self.calls),
+            "model_forward_cuda_seconds": model_forward_cuda_seconds,
             "model_forward_host_span_seconds": sum(
                 float(record["host_span_seconds"]) for record in self.calls
             ),

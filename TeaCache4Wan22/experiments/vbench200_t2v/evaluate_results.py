@@ -15,7 +15,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPOSITORY_DIR = SCRIPT_DIR.parents[2]
 VIDEO_METRICS = REPOSITORY_DIR / "VideoMetrics"
 VBENCH = REPOSITORY_DIR / "VbenchEvaluation"
-EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
+EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
 THREAD_ENV = {
     "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1",
     "MKL_NUM_THREADS": "1", "NUMEXPR_NUM_THREADS": "1",

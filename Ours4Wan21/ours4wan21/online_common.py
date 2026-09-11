@@ -26,8 +26,9 @@ class OnlineConfig:
     selection_end: int = 20
     evaluation_every: int = 4
     evaluation_prompts: int = 20
-    evaluation_targets: tuple = (1.5, 2., 2.5, 3., 3.5)
-    target_min: float = 1.3
+    evaluation_targets: tuple = (1.8, 2.4, 3.0)
+    vbench_enabled: bool = False
+    target_min: float = 1.5
     target_max: float = 3.5
     actor_lr: float = 4e-5
     critic_lr: float = 1e-4
@@ -45,6 +46,38 @@ class OnlineConfig:
     def payload(self):
         return json.loads(json.dumps(asdict(self)))
 
+    def evaluation_rounds(self):
+        return sorted(set(range(self.evaluation_every, self.rounds+1, self.evaluation_every)) | {self.rounds})
+
+
+ONLINE_IQL_PROFILES = {
+    'default': {},
+    'aggressive_a2_a3_v1': dict(tau=.85, beta=2.5, weight_max=75.),
+}
+
+
+def online_config(*, rounds=8, prompt_pool_size=3000, profile='default'):
+    """Versioned online IQL choices; midpoint of the completed A2/A3 experiment."""
+    if profile not in ONLINE_IQL_PROFILES:
+        raise ValueError('unknown online IQL profile: '+str(profile))
+    return OnlineConfig(rounds=rounds, prompt_pool_size=prompt_pool_size,
+                        **ONLINE_IQL_PROFILES[profile])
+
+
+def run_config(manifest):
+    """Validate round count, training population and the named online IQL profile."""
+    rounds=manifest['config']['rounds']
+    if type(rounds) is not int or rounds < 1:
+        raise ValueError('rounds must be a positive integer')
+    size=OnlineConfig().prompt_pool_size
+    if manifest.get('paths',{}).get('training_bundle'):
+        size=len(manifest['pool'])
+        if size<1:raise ValueError('empty offline training population')
+    config=online_config(rounds=rounds,prompt_pool_size=size,profile=manifest.get('iql_profile','default'))
+    if manifest['config'] != config.payload():
+        raise ValueError('frozen online algorithm configuration changed')
+    return config
+
 
 def read(path):
     return json.loads(Path(path).read_text())
@@ -52,7 +85,9 @@ def read(path):
 
 def require_environment():
     import sys
-    if Path(sys.prefix).name != 'wan2.2':
+    explicit = os.environ.get('WAN22_PYTHON')
+    if Path(sys.prefix).name != 'wan2.2' and not (
+            explicit and Path(explicit).resolve() == Path(sys.executable).resolve()):
         raise ValueError('use conda environment wan2.2')
     if any(os.environ.get(k) != '1' for k in THREAD_KEYS):
         raise ValueError('all four BLAS/OpenMP thread variables must explicitly equal 1')
@@ -94,20 +129,20 @@ def isolate_prompts(pool, evaluation, registry, prompt_splits, expected_evaluati
     eval_ids = {r['sample_id'] for r in evaluation}
     eval_texts = {text_key(r['prompt']) for r in evaluation}
     if eval_ids & set(prompt_splits) or eval_texts & offline_texts:
-        raise ValueError('VBench20 prompts must be disjoint from the offline dataset')
+        raise ValueError('evaluation20 prompts must be disjoint from the offline dataset')
     for r in pool:
         sid, key = r['sample_id'], text_key(r['prompt'])
         if sid in by_id and key != text_key(by_id[sid]):
             raise ValueError('prompt ID has changed text')
         if sid in forbidden_ids | eval_ids or key in forbidden_texts | eval_texts:
-            raise ValueError('online pool leaks validation/test/VBench20 prompts')
+            raise ValueError('online pool leaks validation/test/evaluation20 prompts')
 
 
 def gpu_slot(sid, count):
     return int(hashlib.sha256(sid.encode()).hexdigest()[:16], 16) % count
 
 
-def make_plan(pool, round_index, gpu_count, budget_for_target, config=OnlineConfig()):
+def make_plan(pool, round_index, gpu_count, budget_for_target, config=OnlineConfig(), *, gpu_slots=None):
     if round_index < 1 or not pool or gpu_count < 1:
         raise ValueError('invalid round/pool/GPU count')
     # Independent deterministic streams; prompts sampled WITH replacement each round.
@@ -120,7 +155,26 @@ def make_plan(pool, round_index, gpu_count, budget_for_target, config=OnlineConf
     return [dict(**(p := pr.choice(pool)), trajectory_id=f'r{round_index:03d}_{i:04d}',
                  target_speedup=t, skip_budget=budget_for_target(t),
                  sampling_seed=config.plan_seed + round_index * 100000 + i,
-                 slot=gpu_slot(p['sample_id'], gpu_count)) for i, t in enumerate(targets)]
+                 slot=(gpu_slots[p['sample_id']] if gpu_slots is not None else
+                       gpu_slot(p['sample_id'], gpu_count))) for i, t in enumerate(targets)]
+
+
+def balanced_training_slots(pool, gpu_count, config):
+    """Freeze one GPU per sampled prompt, balancing each round's new baseline work."""
+    assigned={}
+    for r in range(1,config.rounds+1):
+        rows=make_plan(pool,r,gpu_count,lambda target:0,config)
+        counts={}
+        for row in rows:counts[row['sample_id']]=counts.get(row['sample_id'],0)+1
+        workload=[0.]*gpu_count
+        for sid,n in counts.items():
+            if sid in assigned:workload[assigned[sid]]+=n
+        for sid,n in counts.items():
+            if sid in assigned:continue
+            slot=min(range(gpu_count),key=lambda g:(workload[g],g))
+            assigned[sid]=slot
+            workload[slot]+=2.25+n  # one native baseline plus sampled candidates
+    return assigned
 
 
 def freeze_json(path, payload):

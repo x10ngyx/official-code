@@ -1,0 +1,3 @@
+# Increase1.8 / conservativee374 / aggressivee358 paired traces
+
+plot.py reads all20 common prompts and60 sealed traces, verifies both CFG branches against actual blocks, then exports a full PNG/SVG plus two10-prompt reading pages. Pair ordering: actual Increase skip ascending, prompt ID; within each pair Increase / conservative / aggressive. All50 steps retained. Pale yellow/blue/pink backgrounds indicate source; dark=recompute, white=reuse. Statistics and RGB/YUV PSNR refer to exactly that row. Output: increase_vbench20 run analysis/paired_traces18/; CSV, source hashes and validation accompany figures.

@@ -2,6 +2,8 @@
 from copy import deepcopy
 from dataclasses import asdict, replace
 import json
+import os
+import csv
 from pathlib import Path
 import random
 import sys
@@ -19,10 +21,11 @@ from ours4wan21.local_iql import compute_normalizer
 from ours4wan21.train import make_networks
 from ours4wan21.policy import Policy
 from ours4wan21.online_common import (OnlineConfig, isolate_prompts, make_plan, prepare_directory,
-    seal, verified, atomic_torch_save, read)
+    seal, verified, atomic_torch_save, read, run_config, balanced_training_slots)
 from ours4wan21.online_training import (OnlineTrainer, UniformReplay, fixed_support, select_checkpoint,
     trace_transitions, train_round)
-from ours4wan21.online_pipeline import dispatch, evaluate_round, run_pipeline
+from ours4wan21.online_pipeline import dispatch, evaluate_round, run_pipeline, paired_quality
+from ours4wan21.online_reference import build_evaluation, load_evaluation_bundle, select_evaluation
 
 
 def parent(b,mode='sea7'):
@@ -46,12 +49,23 @@ class OnlineTests(unittest.TestCase):
         (self.root/'README.md').write_text('Temporary CPU-only unit-test artifacts.\n')
         (self.weights/'README.md').write_text('Temporary CPU-only test weights.\n')
 
-    def tearDown(self):self.tmp.cleanup();self.models.cleanup()
+    def tearDown(self):
+        for link in (PROJECT/'experiment_results').glob(self.root.name+'*'):
+            if link.is_symlink() and link.resolve().is_relative_to(self.root):link.unlink()
+        self.tmp.cleanup();self.models.cleanup()
 
     def test_confirmed_config(self):
         c=OnlineConfig()
         self.assertEqual((c.joint_epochs,c.selection_start,c.selection_end),(20,11,20))
         self.assertEqual((c.critic_warmup_epochs,c.evaluation_every,c.evaluation_prompts),(5,4,20))
+        self.assertEqual((c.target_min,c.target_max),(1.5,3.5))
+        self.assertEqual(c.evaluation_targets,(1.8,2.4,3.0))
+        self.assertFalse(c.vbench_enabled)
+        self.assertEqual(c.payload(),read(PROJECT/'configs/online.json'))
+        # Match the offline data generation contract without importing its runtime.
+        source=(PROJECT/'data_collection/src/ours4wan21_data/manifest.py').read_text()
+        self.assertIn('TARGET_SPEEDUP_MIN = 1.5',source)
+        self.assertIn('TARGET_SPEEDUP_MAX = 3.5',source)
 
     def test_prompt_leakage_by_text_even_if_renamed(self):
         registry=[dict(sample_id='a',prompt='train'),dict(sample_id='v',prompt='held out')]
@@ -62,17 +76,110 @@ class OnlineTests(unittest.TestCase):
             with self.assertRaises(ValueError):isolate_prompts([row],evaluation,registry,split)
         with self.assertRaises(ValueError):isolate_prompts([registry[0]],evaluation[:-1],registry,split)
 
+    def test_explicit_unpacked_environment_requires_matching_interpreter(self):
+        from ours4wan21.online_common import require_environment, THREAD_KEYS
+        env={k:'1' for k in THREAD_KEYS}
+        env['WAN22_PYTHON']=sys.executable
+        with patch.dict(os.environ,env),patch('sys.prefix','/unpacked/Wan2.2-conda-env'):
+            require_environment()
+            with patch.dict(os.environ,{'WAN22_PYTHON':'/different/bin/python'}):
+                with self.assertRaises(ValueError):require_environment()
+
     def test_plan_reproducible_stratified_and_with_replacement(self):
         pool=[dict(sample_id=f'p{i}',prompt=f'prompt {i}') for i in range(3)]
         a=make_plan(pool,1,4,lambda t:round(50*(1-1/t)))
         self.assertEqual(a,make_plan(pool,1,4,lambda t:round(50*(1-1/t))))
         self.assertNotEqual(a,make_plan(pool,2,4,lambda t:round(50*(1-1/t))))
-        bins=sorted(int((r['target_speedup']-1.3)/2.2*100) for r in a)
+        bins=sorted(int((r['target_speedup']-1.5)/2.0*100) for r in a)
         self.assertEqual(bins,list(range(100)))
         self.assertEqual(len({r['sampling_seed'] for r in a}),100)
         self.assertLess(len({r['sample_id'] for r in a}),100)
         for sid in {r['sample_id'] for r in a}:
             self.assertEqual(len({r['slot'] for r in a if r['sample_id']==sid}),1)
+
+    def test_budget_round_count_is_frozen_and_final_round_is_evaluated(self):
+        config=OnlineConfig(rounds=2)
+        self.assertEqual(run_config({'config':config.payload()}).evaluation_rounds(),[2])
+        self.assertEqual(OnlineConfig().evaluation_rounds(),[4,8])
+        bad=config.payload();bad['joint_epochs']=1
+        with self.assertRaises(ValueError):run_config({'config':bad})
+        with self.assertRaises(ValueError):run_config({'config':OnlineConfig(rounds=0).payload()})
+
+    def test_aggressive_online_profile_matches_a2_a3_midpoint_and_is_frozen(self):
+        from ours4wan21.online_common import online_config
+        from ours4wan21.contracts import IQL_PROFILE_PARAMETERS
+        config=online_config(rounds=8,prompt_pool_size=800,profile='aggressive_a2_a3_v1')
+        a2,a3=IQL_PROFILE_PARAMETERS['aggressive_a2_v1'],IQL_PROFILE_PARAMETERS['aggressive_v1']
+        for key in ('tau','beta','weight_max'):
+            self.assertAlmostEqual(getattr(config,key),(a2[key]+a3[key])/2)
+        default=OnlineConfig(rounds=8,prompt_pool_size=800).payload()
+        self.assertEqual({k for k,v in config.payload().items() if v!=default[k]}, {'tau','beta','weight_max'})
+        m=dict(config=config.payload(),iql_profile='aggressive_a2_a3_v1',paths=dict(training_bundle='/reference'),pool=[{}]*800)
+        self.assertEqual(run_config(m),config)
+        m['config']['tau']=.9
+        with self.assertRaises(ValueError):run_config(m)
+        with self.assertRaises(ValueError):online_config(profile='unknown')
+
+    def test_aggressive_online_trainer_receives_loss_parameters(self):
+        from ours4wan21.online_common import online_config
+        b=bundle('scalar5');p=parent(b,'scalar5')
+        config=online_config(profile='aggressive_a2_a3_v1')
+        trainer=OnlineTrainer(p,config,'cpu')
+        self.assertEqual((trainer.config.tau,trainer.config.beta,trainer.config.weight_max),(.85,2.5,75.))
+        self.assertEqual([o.param_groups[0]['lr'] for o in trainer.optimizers],[1e-4,1e-4,4e-5])
+        import ours4wan21.online_training as training
+        rows={k:v[:100] for k,v in b['tensors'].items()}
+        replay=UniformReplay(rows,[rows])
+        with patch.object(training,'expectile_loss',wraps=training.expectile_loss) as value_loss, \
+             patch.object(training,'_actor_terms',wraps=training._actor_terms) as actor_loss:
+            trainer.update(replay,actor=True)
+        self.assertEqual(value_loss.call_args.args[1],.85)
+        self.assertEqual(actor_loss.call_args.kwargs['beta'],2.5)
+        self.assertEqual(actor_loss.call_args.kwargs['weight_max'],75.)
+        saved=trainer.checkpoint(replay,dict(round=1,joint_epoch=1))
+        resumed=OnlineTrainer(saved,config,'cpu',restore=True)
+        self.assertTrue(resumed.restored)
+        with self.assertRaises(ValueError):OnlineTrainer(saved,OnlineConfig(),'cpu',restore=True)
+
+    def test_balanced_training_slots_keep_repeated_prompt_baselines_on_same_gpu(self):
+        pool=[dict(sample_id=f'prompt_{i}',prompt=f'prompt {i}') for i in range(3000)]
+        c=OnlineConfig(rounds=2);slots=balanced_training_slots(pool,4,c)
+        self.assertEqual(slots,balanced_training_slots(pool,4,c))
+        counts=[]
+        for r in (1,2):
+            plan=make_plan(pool,r,4,lambda t:25,c,gpu_slots=slots)
+            counts.append([sum(x['slot']==g for x in plan) for g in range(4)])
+            for row in plan:self.assertEqual(row['slot'],slots[row['sample_id']])
+        self.assertTrue(all(max(n)-min(n)<=4 for n in counts))
+
+    def test_offline_training_population_and_pool_config(self):
+        from ours4wan21.online_train_reference import offline_train_pool
+        registry=[dict(sample_id=x,prompt=x) for x in ('z','a','v','t','unused')]
+        manifest=dict(prompt_splits={'z':'train','a':'train','v':'evaluation','t':'test'})
+        pool=offline_train_pool(manifest,registry)
+        self.assertEqual([r['sample_id'] for r in pool],['a','z'])
+        with self.assertRaises(ValueError):offline_train_pool(manifest,registry[1:])
+        m=dict(config=OnlineConfig(rounds=3,prompt_pool_size=2).payload(),pool=pool,paths=dict(training_bundle='/reference'))
+        self.assertEqual(run_config(m).prompt_pool_size,2)
+        m['config']['actor_lr']=.1
+        with self.assertRaises(ValueError):run_config(m)
+
+    def test_collection_reuses_training_baseline_and_original_gpu(self):
+        from ours4wan21.online_pipeline import collect_round
+        row=dict(sample_id='a',prompt='training a',baseline_gpu_uuid='GPU-original')
+        m=dict(pool=[row],gpus=['GPU-other','GPU-original'],training_gpu_slots={'a':1},
+               paths=dict(training_bundle=str(self.root/'reference'),calibration='unused'),mode='sea7')
+        checkpoint=self.weights/'parent.pt';checkpoint.write_bytes(b'checkpoint')
+        captured=[]
+        def stop_after_dispatch(run,manifest,jobs,label):
+            captured.extend(jobs)
+            raise RuntimeError('test stops before quality and replay')
+        with patch('ours4wan21.online_pipeline.verified',return_value=True),              patch('ours4wan21.policy.resolve_budget',return_value=29),              patch('ours4wan21.online_pipeline.dispatch',side_effect=stop_after_dispatch):
+            with self.assertRaisesRegex(RuntimeError,'test stops'):
+                collect_round(self.root,m,checkpoint,1,OnlineConfig(prompt_pool_size=1))
+        self.assertEqual(len(captured),100)
+        self.assertTrue(all(j['kind']=='collection' and j['slot']==1 and j['expected_gpu_uuid']=='GPU-original' for j in captured))
+        self.assertEqual(len({j['output'] for j in captured}),100)
 
     def test_uniform_replay_not_fixed_source_mixture(self):
         b=bundle('scalar5')['tensors'];old={k:v[:100] for k,v in b.items()};new={k:v[:50] for k,v in b.items()}
@@ -194,32 +301,142 @@ class OnlineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             dispatch(self.root,{},[dict(output='same',kind='a'),dict(output='same',kind='b')],'test')
 
-    def test_vbench20_builds_100_cells_for_each_checkpoint(self):
+    def evaluation_fixture(self):
+        source=self.root/'source50';source.mkdir()
+        rows=[dict(sample_id=f'p{i:03d}',prompt=f'prompt {i}') for i in range(50)]
+        (source/'prompts').mkdir()
+        (source/'prompts/selected.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+        profile=source/'profile.json';dump(profile,{'profile':'fixture'})
+        config=dict(protocol=PROTOCOL,prompt_count=50,selected_ids=[r['sample_id'] for r in rows],
+            targets=[1.8,2.4,3.0],skip_budgets=[23,29,35],flops_profile=str(profile),
+            source_sha256={str(profile):sha256(profile)},shard_ids={})
+        for g in range(4):
+            shard=rows[g::4];config['shard_ids'][str(g)]=[r['sample_id'] for r in shard]
+            base=source/'shards'/f'gpu{g}'/'baseline';base.mkdir(parents=True)
+            dump(base/'run.json',dict(protocol=PROTOCOL,method='baseline',skip_budget=None,
+                policy_checkpoint=None,flops_profile_sha256=sha256(profile),prompts=shard,
+                gpu_uuid=f'GPU-{g}',gpu='fixture',checkpoint_dir='model'))
+            dump(base/'COMPLETE.json',dict(status='generation_complete',videos=len(shard)))
+            measured=[]
+            for sub in ('videos','timings','traces'):(base/sub).mkdir()
+            for row in shard:
+                sid=row['sample_id']
+                measured.append(dict(sample_id=sid,generate_seconds=100.,dit_tflops=1000.,
+                    t5_cuda_seconds=1.,dit_cuda_seconds=90.,vae_decode_cuda_seconds=9.,
+                    estimated_t5_tflops_per_video=10.,estimated_vae_decode_tflops_per_video=100.))
+                (base/'videos'/f'{sid}.mp4').write_bytes(sid.encode())
+                dump(base/'timings'/f'{sid}.json',dict(status='success',full_compute_forward_calls=100,
+                    reuse_forward_calls=0,pipeline_generate_wall_seconds=100.))
+                dump(base/'traces'/f'{sid}.json',dict(step_reuse=0,step_recompute=50))
+            dump(base/'components.json',dict(rows=measured))
+        dump(source/'config.json',config)
+        dump(source/'COMPLETE.json',dict(status='complete',baseline_videos=50))
+        out=self.root/(self.root.name+'_evaluation_bundle')
+        args=type('Args',(),dict(source_run=source,output_dir=out))()
+        with patch('ours4wan21.online_reference.video_geometry',return_value={'fixture':True}):
+            build_evaluation(args)
+        return source,out,args
+
+    def test_reference_selection_reuses_original_files_and_detects_corruption(self):
+        source,out,args=self.evaluation_fixture()
+        original=read(source/'config.json')
+        data=load_evaluation_bundle(out)
+        expected=sorted(random.Random(42).sample(original['selected_ids'],20))
+        self.assertEqual([r['sample_id'] for r in data['rows']],expected)
+        before=sha256(out/'manifest.json');build_evaluation(args)
+        self.assertEqual(sha256(out/'manifest.json'),before)
+        for row in data['rows']:
+            base=out/'baselines'/row['sample_id']
+            self.assertTrue((base/'video.mp4').is_symlink())
+            self.assertTrue((base/'video.mp4').resolve().is_relative_to(source))
+            self.assertEqual(read(base/'measurement.json')['generate_seconds'],100.)
+        row=data['rows'][0]
+        (out/'baselines'/row['sample_id']/'video.mp4').resolve().write_bytes(b'corrupt')
+        with self.assertRaises(ValueError):load_evaluation_bundle(out)
+        with self.assertRaises(ValueError):build_evaluation(args)
+
+    def test_evaluation20_has_60_cells_no_baseline_generation_or_vbench(self):
+        archive,reference,_=self.evaluation_fixture()
         source=self.weights/'offline.pt';source.write_text('offline')
         selected=self.weights/'selected.pt';selected.write_text('online')
-        m=dict(paths=dict(start_checkpoint=str(source),calibration='unused'),gpus=['0','1'],
-               evaluation=[dict(sample_id=f'e{i}',prompt=f'remote prompt {i}') for i in range(20)])
-        dispatched=[];scored=[]
-        def fake_dispatch(run,manifest,jobs,label):dispatched.extend(jobs)
-        def fake_score(run,manifest,rows,out):
-            scored.append(len(rows))
-            return dict(vbench_score=.8,raw_dimension_scores={str(i):.8 for i in range(10)})
+        data=load_evaluation_bundle(reference)
+        m=dict(paths=dict(start_checkpoint=str(source),calibration='unused',evaluation_bundle=str(reference)),
+               gpus=['GPU-3','GPU-2','GPU-1','GPU-0'],evaluation=data['rows'],evaluation_budgets=[23,29,35])
+        dispatched=[];dispatch_calls=[]
+        def fake_dispatch(run,manifest,jobs,label):
+            dispatched.extend(jobs);dispatch_calls.append(label)
         def fake_quality(run,manifest,pairs,out):
+            self.assertEqual(len(pairs),20)
+            for _,base,_ in pairs:self.assertTrue(Path(base).is_relative_to(reference))
             return {sid:dict(psnr_rgb_db_mean=22.,ssim_rgb_mean=.8,lpips_alex_v0_1_spatial_mean=.1) for sid,_,_ in pairs}
-        def fake_aggregate(pairs,q,score):
-            return dict(mean_quality=next(iter(q.values())),generate_speedup=2.,mean_generate_seconds=100.,mean_dit_tflops=100.,vbench_score=.8)
-        with patch('ours4wan21.policy.resolve_budget',return_value=25),\
-             patch('ours4wan21.online_pipeline.dispatch',side_effect=fake_dispatch),\
+        def fake_aggregate(pairs,q):
+            return dict(mean_quality=next(iter(q.values())),generate_speedup=2.,mean_generate_seconds=100.,mean_dit_tflops=100.)
+        with patch('ours4wan21.online_pipeline.dispatch',side_effect=fake_dispatch),\
              patch('ours4wan21.online_pipeline.paired_quality',side_effect=fake_quality),\
-             patch('ours4wan21.online_pipeline.vbench',side_effect=fake_score),\
-             patch('ours4wan21.online_pipeline.aggregate_target',side_effect=fake_aggregate):
+             patch('ours4wan21.online_pipeline.aggregate_target',side_effect=fake_aggregate),\
+             patch('ours4wan21.online_pipeline.invoke',side_effect=AssertionError('unexpected evaluation subprocess')):
             evaluate_round(self.root,m,selected,4,OnlineConfig())
-        self.assertEqual(len(dispatched),220)
-        self.assertEqual(scored,[20]*11)
-        self.assertEqual(len({j['output'] for j in dispatched}),220)
+        self.assertEqual(len(dispatched),120)
+        self.assertEqual(len(dispatch_calls),1)
+        self.assertEqual({j['kind'] for j in dispatched},{'evaluation'})
+        self.assertEqual({j['target_speedup']:j['skip_budget'] for j in dispatched},{1.8:23,2.4:29,3.0:35})
+        self.assertEqual(len({j['output'] for j in dispatched}),120)
+        by_id={r['sample_id']:r for r in data['rows']}
+        for job in dispatched:
+            self.assertEqual(m['gpus'][job['slot']],by_id[job['sample_id']]['baseline_gpu_uuid'])
+            self.assertEqual(job['expected_gpu_uuid'],m['gpus'][job['slot']])
         result=read(self.root/'rounds/round_004/evaluation/metrics.json')
-        self.assertEqual((result['candidate_cells'],result['reference_cells']),(100,100))
-        self.assertEqual(len(result['per_target']),5)
+        self.assertEqual((result['candidate_cells'],result['reference_cells']),(60,60))
+        self.assertEqual(len(result['per_target']),3)
+        self.assertEqual(result['vbench_status'],'skipped_by_user')
+        self.assertEqual(result['reused_baseline_videos'],20)
+        self.assertNotIn('vbench_score',json.dumps(result))
+        self.assertFalse(list(self.root.rglob('*vbench20*')))
+
+    def test_reference_rejects_wrong_native_protocol_and_prompt(self):
+        source,out,args=self.evaluation_fixture()
+        row=load_evaluation_bundle(out)['rows'][0]
+        shard=next(k for k,ids in read(source/'config.json')['shard_ids'].items() if row['sample_id'] in ids)
+        path=source/'shards'/f'gpu{shard}'/'baseline/run.json'
+        manifest=read(path);manifest['protocol']['seed']=0;dump(path,manifest)
+        args.output_dir=self.root/'bad_bundle'
+        with self.assertRaisesRegex(ValueError,'native baseline identity'):build_evaluation(args)
+        self.assertFalse(args.output_dir.exists())
+
+    def test_parallel_quality_merges_complete_original_rows_and_reuses_results(self):
+        _,reference,_=self.evaluation_fixture();data=load_evaluation_bundle(reference);pairs=[]
+        for row in data['rows'][:8]:
+            sid=row['sample_id'];candidate=self.root/'candidates'/sid;candidate.mkdir(parents=True)
+            identity=dict(job=dict(sample_id=sid,prompt=row['prompt']))
+            dump(candidate/'generation.json',dict(identity=identity,protocol=PROTOCOL,gpu_uuid=row['baseline_gpu_uuid']))
+            (candidate/'video.mp4').write_bytes(sid.encode())
+            seal(candidate,['generation.json','video.mp4'],identity=identity)
+            pairs.append((sid,str(reference/'baselines'/sid),str(candidate)))
+        devices=[]
+        def fake_metrics(command,log,gpu):
+            devices.append(gpu)
+            reference_dir=Path(command[command.index('--reference-dir')+1])
+            output=Path(command[command.index('--output-dir')+1]);output.mkdir()
+            ids=sorted(p.stem for p in reference_dir.glob('*.mp4'))
+            rows=[dict(video_id=sid,frames=81,height=480,width=832,psnr_rgb_db_mean=22.,
+                ssim_rgb_mean=.8,lpips_alex_v0_1_spatial_mean=.1) for sid in ids]
+            with (output/'per_video.csv').open('w',newline='') as stream:
+                writer=csv.DictWriter(stream,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
+            with (output/'per_frame.csv').open('w',newline='') as stream:
+                writer=csv.DictWriter(stream,fieldnames=['video_id','frame_index']);writer.writeheader()
+                writer.writerows(dict(video_id=sid,frame_index=i) for sid in ids for i in range(81))
+            dump(output/'summary.json',dict(videos=len(ids)))
+        out=self.root/'quality';m=dict(gpus=['GPU-0','GPU-1','GPU-2','GPU-3'])
+        with patch('ours4wan21.online_pipeline.invoke',side_effect=fake_metrics):
+            result=paired_quality(self.root,m,pairs,out)
+        self.assertEqual(set(devices),set(m['gpus']))
+        self.assertEqual(set(result),{p[0] for p in pairs})
+        self.assertEqual(read(out/'metrics/summary.json')['frames'],8*81)
+        self.assertEqual(read(out/'metrics/summary.json')['mean_metrics']['psnr_rgb_db_mean'],22.)
+        with (out/'metrics/per_frame.csv').open() as stream:
+            self.assertEqual(len(list(csv.DictReader(stream))),8*81)
+        with patch('ours4wan21.online_pipeline.invoke',side_effect=AssertionError('must reuse complete quality')):
+            self.assertEqual(paired_quality(self.root,m,pairs,out),result)
 
     def test_calibration_checks_gpu_and_exports_measured_ratios(self):
         from ours4wan21.online_setup import calibration_from_runs
@@ -245,7 +462,7 @@ class OnlineTests(unittest.TestCase):
 
     def test_orchestrator_evaluates_only_every_four_rounds(self):
         # Exercise the actual eight-round state machine with generation/training replaced.
-        m=dict(paths=dict(start_checkpoint='start'),gpus=['0'])
+        m=dict(paths=dict(start_checkpoint='start'),gpus=['0'],config=OnlineConfig().payload())
         evaluated=[]
         selected=self.weights/'selected.pt';selected.write_text('mock')
         def fake_collect(run,manifest,parent,r,c):return f'online{r}'

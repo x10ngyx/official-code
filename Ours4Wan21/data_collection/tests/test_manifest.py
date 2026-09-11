@@ -16,6 +16,7 @@ from ours4wan21_data.manifest import (  # noqa: E402
     MAPPING_SCHEMA,
     PROTOCOL,
     SEACACHE_THRESHOLDS,
+    STAGE1_NUM_SELECTED_PROMPTS,
     build_seacache_manifest,
     build_plan,
     manifest_contract,
@@ -64,6 +65,48 @@ class ManifestContractTests(unittest.TestCase):
         self.assertEqual(digest, SELECTED_ID_SHA256)
         self.assertEqual(self.summary["prompt_selection_seed"], 2026073001)
         self.assertEqual(self.summary["selected_part_count"], 98)
+
+    def test_stage1_prefix_is_balanced_and_expandable(self) -> None:
+        prompt_limit = STAGE1_NUM_SELECTED_PROMPTS
+        prefix = self.rows[:prompt_limit * 3]
+        self.assertEqual(len(prefix), 3000)
+        self.assertEqual(len({row["sample_id"] for row in prefix}), 1000)
+        self.assertEqual(
+            Counter(row["split"] for row in prefix),
+            Counter(train=2400, val=300, test=300),
+        )
+        self.assertEqual(
+            Counter(row["shard_index"] for row in prefix),
+            Counter({0: 750, 1: 750, 2: 750, 3: 750}),
+        )
+        self.assertEqual(self.summary["stage1_prompt_split_counts"], {
+            "train": 800,
+            "val": 100,
+            "test": 100,
+        })
+        for shard in range(4):
+            self.assertEqual(
+                len(selected_rows(self.rows, "baseline", shard, prompt_limit)), 250
+            )
+            self.assertEqual(
+                len(selected_rows(self.rows, "candidate", shard, prompt_limit)), 750
+            )
+
+    def test_stage1_distribution_audit_stays_close_to_full_plan(self) -> None:
+        audit = self.summary["stage1_distribution_audit"]
+        for drift in audit["categorical_prompt_drift_vs_full"].values():
+            self.assertEqual(
+                drift["category_count_stage1"], drift["category_count_full"]
+            )
+            self.assertLessEqual(drift["max_absolute_share_difference"], 0.02)
+        self.assertLess(audit["target_speedup"]["stage1_ks_vs_declared_uniform"], 0.03)
+        self.assertLess(audit["q"]["stage1_ks_vs_declared_uniform"], 0.03)
+        self.assertLessEqual(
+            audit["reference_point_count_drift_vs_full"][
+                "max_absolute_share_difference"
+            ],
+            0.02,
+        )
 
     def test_bundled_prompt_snapshot_is_exact(self) -> None:
         self.assertEqual(hashlib.sha256(PROMPT_POOL.read_bytes()).hexdigest(), PROMPT_POOL_SHA256)

@@ -236,8 +236,8 @@ python -m unittest discover -s tests -p 'test_*.py' -v
 
 The tests compare PSNR and SSIM directly against the locked upstream formulas,
 compare batched LPIPS against locked per-frame spatial-map calls, exercise real
-MP4 decoding, validate the combined CLI, and verify both protocols exposed by
-the repository-wide PSNR compatibility entry point.
+MP4 decoding, validate the combined CLI, and verify explicit and default use of
+the frozen RGB protocol through the standalone PSNR compatibility entry point.
 
 ## Files
 

@@ -9,7 +9,19 @@ selected="${2:-all}"
 : "${OURS4WAN21_WORKSPACE:?Set remote workspace root}"
 suite="${SUITE_NAME:-ours21_random3000_12groups_v1}"
 features="$EXP_BASE/${suite}_features"
-run_python() { conda run --no-capture-output -n wan2.2 python "$@"; }
+run_python() {
+  if [[ -n "${WAN22_PYTHON:-}" ]]; then
+    [[ -x "$WAN22_PYTHON" ]] || { echo "WAN22_PYTHON is not executable: $WAN22_PYTHON" >&2; return 2; }
+    "$WAN22_PYTHON" "$@"
+  elif command -v conda >/dev/null 2>&1; then
+    conda run --no-capture-output -n wan2.2 python "$@"
+  elif [[ -x "$OURS4WAN21_WORKSPACE/data/environments/Wan2.2-conda-env/bin/python" ]]; then
+    "$OURS4WAN21_WORKSPACE/data/environments/Wan2.2-conda-env/bin/python" "$@"
+  else
+    echo "Set WAN22_PYTHON or make the wan2.2 conda environment available" >&2
+    return 2
+  fi
+}
 if [[ "$stage" == features ]]; then
   : "${COLLECTION_ROOT:?}" "${SELECTION_DIR:?}"
   extra=()

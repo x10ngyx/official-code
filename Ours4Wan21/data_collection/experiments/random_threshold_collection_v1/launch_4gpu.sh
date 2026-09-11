@@ -34,6 +34,12 @@ flops_profile=${FLOPS_PROFILE:-$archive_root/calflops_profile.json}
 metrics_device=${METRICS_DEVICE:-auto}
 lpips_batch_size=${LPIPS_BATCH_SIZE:-8}
 metrics_model_cache=${METRICS_MODEL_CACHE:-${TORCH_HOME:-}}
+prompt_limit=${PROMPT_LIMIT:-}
+vbench_scope=full
+if [[ -n $prompt_limit ]]; then
+  vbench_scope=prefix_$prompt_limit
+fi
+vbench_skip_marker=$archive_root/controls/skip_vbench_${vbench_scope}.json
 vbench_python=${VBENCH_PYTHON:-}
 vbench_cache=${VBENCH_CACHE_DIR:-$official_code/../../models/VBench}
 vbench_runner=$official_code/VbenchEvaluation/run_custom_vbench.sh
@@ -54,13 +60,13 @@ if [[ ! -x ${python_cmd[0]} ]]; then
 fi
 
 prepare_archive() {
-  mkdir -p "$archive_root/manifests" "$archive_root/logs"
+  mkdir -p "$archive_root/manifests" "$archive_root/logs" "$archive_root/controls"
   if [[ ! -e $archive_root/README.md ]]; then
     printf '%s\n' \
       '# Ours4Wan21 random-threshold collection archive' \
       '' \
       'Generated artifacts for the frozen Wan2.1-T2V-1.3B random-threshold pipeline.' \
-      'See manifests/, shared_baselines/, shards/, completed/, published/, audits/, and logs/.' \
+      'See manifests/, shared_baselines/, shards/, completed/, published/, audits/, controls/, and logs/.' \
       > "$archive_root/README.md"
   fi
   if [[ -L $result_link ]]; then
@@ -154,6 +160,10 @@ run_workers() {
   local manifest=$2
   local pids=()
   local metric_args=(--metrics-device "$metrics_device" --lpips-batch-size "$lpips_batch_size")
+  local stage_args=()
+  if [[ -n $prompt_limit ]]; then
+    stage_args+=(--prompt-limit "$prompt_limit")
+  fi
   if [[ -n $metrics_model_cache ]]; then
     metric_args+=(--metrics-model-cache "$metrics_model_cache")
   fi
@@ -163,7 +173,7 @@ run_workers() {
       --mode "$mode" --manifest "$manifest" --parent-root "$archive_root" \
       --shard-index "$gpu" --wan21-root "$wan21_root" \
       --checkpoint-dir "$checkpoint_dir" --flops-profile "$flops_profile" \
-      "${metric_args[@]}" --resume \
+      "${metric_args[@]}" "${stage_args[@]}" --resume \
       > "$archive_root/logs/${mode}_shard_${gpu}.log" 2>&1 &
     pids+=("$!")
   done
@@ -194,12 +204,18 @@ run_vbench() {
     echo "VBench cache directory is missing: $vbench_cache" >&2
     exit 2
   fi
+  local stage_args=()
+  local log_suffix=""
+  if [[ -n $prompt_limit ]]; then
+    stage_args+=(--prompt-limit "$prompt_limit")
+    log_suffix="_prefix_${prompt_limit}"
+  fi
   CUDA_VISIBLE_DEVICES=${VBENCH_GPU:-0} "${python_cmd[@]}" \
     -m ours4wan21_data.vbench \
     --manifest "$runnable_manifest" --parent-root "$archive_root" \
     --runner "$vbench_runner" --vbench-python "$vbench_python" \
-    --vbench-cache "$vbench_cache" \
-    > "$archive_root/logs/vbench.log" 2>&1
+    --vbench-cache "$vbench_cache" "${stage_args[@]}" \
+    > "$archive_root/logs/vbench${log_suffix}.log" 2>&1
 }
 
 preflight package
@@ -251,11 +267,29 @@ case "$phase" in
     require_file "$runnable_manifest"
     require_file "$flops_profile"
     preflight finalize
-    "${python_cmd[@]}" -m ours4wan21_data.publisher \
-      --manifest "$runnable_manifest" --parent-root "$archive_root" --require-complete
-    run_vbench
+    publisher_args=(
+      -m ours4wan21_data.publisher --manifest "$runnable_manifest"
+      --parent-root "$archive_root"
+    )
+    if [[ -n $prompt_limit ]]; then
+      publisher_args+=(--require-prefix-count "$((prompt_limit * 3))")
+    else
+      publisher_args+=(--require-complete)
+    fi
+    "${python_cmd[@]}" "${publisher_args[@]}"
+    skip_vbench=0
+    if [[ -s $vbench_skip_marker ]]; then
+      skip_vbench=1
+      echo "skipping VBench by archive control: $vbench_skip_marker"
+    else
+      run_vbench
+    fi
     mkdir -p "$archive_root/audits"
-    audit_output=$archive_root/audits/archive_audit.json
+    audit_suffix=""
+    if [[ -n $prompt_limit ]]; then
+      audit_suffix="_prefix_$((prompt_limit * 3))"
+    fi
+    audit_output=$archive_root/audits/archive_audit${audit_suffix}.json
     if [[ -e $audit_output ]]; then
       echo "refusing to overwrite audit: $audit_output" >&2
       exit 2
@@ -267,6 +301,12 @@ case "$phase" in
     )
     if [[ ${DEEP_LATENTS:-0} == 1 ]]; then
       audit_args+=(--deep-latents)
+    fi
+    if [[ -n $prompt_limit ]]; then
+      audit_args+=(--prompt-limit "$prompt_limit")
+    fi
+    if (( skip_vbench == 1 )); then
+      audit_args+=(--skip-vbench)
     fi
     "${python_cmd[@]}" "${audit_args[@]}"
     ;;

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 
-EXP_ROOT = Path("/all/yiran07-disk3/huteng_data/exp").resolve()
+EXP_ROOT = Path("/mnt/hdd/xiongyuxiang/tmp/exp").resolve()
 TFLOP_DIVISOR = 1_000_000_000_000
 STAGE_STEPS = {"high": 32, "low": 18}
 BRANCHES = {"cond", "uncond"}

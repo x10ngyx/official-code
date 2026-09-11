@@ -72,6 +72,7 @@ export WAN21_ROOT=/remote/path/Wan2.1-locked-65386b2
 export CHECKPOINT_DIR=/remote/models/Wan2.1-T2V-1.3B
 export EXP_BASE=/remote/large-disk/exp
 export RUN_ID=wan21_random_threshold_v1
+export PROMPT_LIMIT=1000  # staged 1,000-baseline / 3,000-candidate release
 export METRICS_MODEL_CACHE=/remote/models/torch-cache
 # Optional: auto selects the worker's visible CUDA device; CPU is supported.
 export METRICS_DEVICE=auto
@@ -88,6 +89,11 @@ bash experiments/random_threshold_collection_v1/launch_4gpu.sh plan
 bash experiments/random_threshold_collection_v1/launch_4gpu.sh profile
 bash experiments/random_threshold_collection_v1/launch_4gpu.sh baselines
 ```
+
+`PROMPT_LIMIT=1000` keeps one full 9,000-row manifest but runs only its
+distribution-checked first 1,000 prompts. After the stage is complete, unset
+`PROMPT_LIMIT` to extend the same archive to all 3,000 prompts; existing
+baseline and candidate bundles remain reusable.
 
 After calibration, point `CALIBRATION_CONFIG` at the fitted mapping and run:
 

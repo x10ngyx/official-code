@@ -32,6 +32,12 @@ remain explicit external inputs. See `REMOTE_DEPLOYMENT.md`.
   3,000 prompts uniformly without replacement and assigns an 80/10/10
   prompt-level train/val/test split.  It retains the established prompt
   selection seed `2026073001` and random-manifest seed `20260722`.
+- Staged release: the first 1,000 prompts are themselves a deterministic
+  uniform-without-replacement prefix with an exact 800/100/100 split. Their
+  3,000 candidate rows are the literal first 3,000 rows of the complete plan,
+  so a later run can extend the same archive without resampling or relabeling.
+  The plan summary records prompt-category drift and KS checks for the sampled
+  target-speedup and q distributions.
 - Random trajectories: three per selected prompt (`9,000` total).  Target
   speedup is sampled independently from `Uniform[1.50, 3.50]`; perturbation
   strength is sampled independently from `Uniform[0.20, 1.00]`.
@@ -67,7 +73,9 @@ not a conditioning variable. The grid provenance is frozen in
 
 Every selected prompt first receives one matched full-compute reference with
 its MP4, timing/TFLOPs, trace and 50 input latents. Candidate collection is
-blocked until all 3,000 baseline bundles pass. Each candidate stores MP4,
+blocked until all baseline bundles in the requested prompt prefix pass. With
+`PROMPT_LIMIT=1000`, the four workers collect 250 baselines and 750 candidates
+each; omitting it retains the complete 3,000/9,000 behavior. Each candidate stores MP4,
 50 input latents paired step-for-step with the baseline latents, requested-threshold/action trace,
 FFprobe metadata, canonical `rgb_full_reference_v1` PSNR/SSIM/LPIPS,
 CUDA-synchronized pipeline-generate timing, per-DiT-call timing/block counts,
@@ -99,9 +107,10 @@ Each candidate also stores
 the three video-level means, while trajectory tables also retain per-frame
 standard deviation/min/max values.
 
-The complete archive additionally runs the ten official VBench dimensions
-supported for arbitrary `custom_input` videos over all baselines and all
-candidates. Because upstream defines no official custom-input aggregate, the
+Each finalized stage additionally runs the ten official VBench dimensions
+supported for arbitrary `custom_input` videos over that stage's baselines and
+candidates. Stage scores live under a candidate-count-specific quality path so
+they cannot be mistaken for the later full-set score. Because upstream defines no official custom-input aggregate, the
 reported archive-level `vbench_score` is explicitly the unweighted mean of
 those ten raw dimension scores and is not presented as a leaderboard score.
 

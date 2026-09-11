@@ -1,4 +1,4 @@
-"""Remote-ready collection/replay/training/VBench20 orchestration."""
+"""Remote-ready collection/replay/training/evaluation20 orchestration."""
 import argparse
 import importlib.util
 import shutil
@@ -11,18 +11,21 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from .contracts import (EXP_ROOT, MODEL_ROOT, OFFICIAL, PROJECT, PROTOCOL,
                         create_result, dump, sha256, state_contract, under)
 from .online_common import (OnlineConfig, THREAD_KEYS, atomic_torch_save, checkpoint_identity,
     freeze_json, gpu_slot, inventory, isolate_prompts, make_plan, prepare_directory, prompts, read,
-    require_environment, seal, verified)
+    require_environment, seal, verified, run_config, balanced_training_slots, online_config, ONLINE_IQL_PROFILES)
 from .online_generation import job_identity
+from .online_reference import load_evaluation_bundle, gpu_uuids
+from .online_train_reference import load_training_bundle, offline_train_pool
 
 
 def source_hashes():
     paths=list((PROJECT/'ours4wan21').glob('*.py'))+[PROJECT/'online.py']
-    for name in ('SeaCache4Wan21','VideoMetrics','VbenchEvaluation','Wan21Benchmark','ComponentMetrics'):
+    for name in ('SeaCache4Wan21','VideoMetrics','Wan21Benchmark','ComponentMetrics'):
         paths.extend(p for p in (OFFICIAL/name).rglob('*.py') if 'tests' not in p.parts)
     return {str(p.relative_to(OFFICIAL)):sha256(p) for p in sorted(set(paths))}
 
@@ -58,8 +61,10 @@ def prepare(args):
     from .shared import benchmark
     benchmark()
     from protocol import source_lock,checkpoint
-    config=OnlineConfig()
-    missing=[name for name in ('lpips','vbench','imageio','cv2') if importlib.util.find_spec(name) is None]
+    if args.rounds < 1:raise ValueError('rounds must be positive')
+    iql_profile=getattr(args,'iql_profile','default')
+    config=online_config(rounds=args.rounds,profile=iql_profile)
+    missing=[name for name in ('lpips','imageio','cv2') if importlib.util.find_spec(name) is None]
     missing += [name for name in ('ffmpeg','ffprobe') if shutil.which(name) is None]
     if missing:
         raise ValueError('missing generation/quality dependencies: '+', '.join(missing))
@@ -77,9 +82,22 @@ def prepare(args):
     if bundle['manifest'].get('trajectories')!=3000:
         raise ValueError('production offline source must be the frozen random3000 bundle')
     pool,evaluation,registry=[prompts(p) for p in (args.train_prompts,args.eval_prompts,args.prompt_registry)]
+    training_dir=getattr(args,'training_bundle',None)
+    training_reference=None
+    if training_dir is not None:
+        training_dir=Path(training_dir).resolve()
+        training_reference=load_training_bundle(training_dir,verify_artifacts=True)
+        if (pool!=offline_train_pool(bundle['manifest'],registry) or
+                pool!=[dict(sample_id=r['sample_id'],prompt=r['prompt']) for r in training_reference['rows']]):
+            raise ValueError('training reference must match the exact offline train population')
+        config=online_config(rounds=args.rounds,prompt_pool_size=len(pool),profile=iql_profile)
     if len(pool)!=config.prompt_pool_size:
         raise ValueError('freeze exactly 3000 eligible online pool prompts')
     isolate_prompts(pool,evaluation,registry,bundle['manifest']['prompt_splits'])
+    reference_dir=Path(args.evaluation_bundle).resolve()
+    reference=load_evaluation_bundle(reference_dir)
+    if evaluation != [dict(sample_id=r['sample_id'],prompt=r['prompt']) for r in reference['rows']]:
+        raise ValueError('evaluation prompts differ from the frozen VBench50 subset')
     # Verify registry text against the archived collection manifest when available.
     # A separate registry remains required for portable bundles whose old paths are unavailable.
     calibration=Path(args.calibration).resolve(); profile=Path(args.flops_profile).resolve()
@@ -88,7 +106,7 @@ def prepare(args):
         raise ValueError('empty or nonfinite calibration')
     speeds=[float(e['calibrated_speedup']) for e in entries]
     if min(speeds)>config.target_min or max(speeds)<config.target_max:
-        raise ValueError('calibration must cover the complete [1.3,3.5] target range')
+        raise ValueError('calibration must cover the complete [1.5,3.5] target range')
     for target in [config.target_min,config.target_max,*config.evaluation_targets]:
         resolve_budget(target_speedup=target,calibration=calibration)
     if len({e['skip_budget'] for e in entries})!=len(entries):
@@ -100,22 +118,44 @@ def prepare(args):
     extract_component_tflops(f)
     root=Path(args.wan21_root).resolve(); lock=source_lock(root)
     wan_checkpoint=checkpoint(Path(args.checkpoint_dir).resolve())
-    gpus=args.gpus.split(',')
-    if not gpus or len(gpus)!=len(set(gpus)) or any(not g.strip() for g in gpus):
-        raise ValueError('provide distinct GPUs/UUIDs')
+    gpus=gpu_uuids(args.gpus.split(','))
+    for row in reference['rows']:
+        generation=read(reference_dir/'baselines'/row['sample_id']/'generation.json')
+        if (row['baseline_gpu_uuid'] not in gpus or
+                generation['flops_profile_sha256']!=sha256(profile) or
+                Path(generation['wan_checkpoint']).resolve()!=wan_checkpoint.resolve()):
+            raise ValueError('reused evaluation baseline GPU/model/FLOPs profile differs')
+    if training_reference is not None:
+        for row in training_reference['rows']:
+            generation=read(training_dir/'baselines'/row['sample_id']/'generation.json')
+            if (row['baseline_gpu_uuid'] not in gpus or generation['flops_profile_sha256']!=sha256(profile) or
+                    Path(generation['wan_checkpoint']).resolve()!=wan_checkpoint.resolve()):
+                raise ValueError('training baseline GPU/model/profile differs')
     out=under(args.output_dir,EXP_ROOT); weights=under(args.weights_dir,MODEL_ROOT)
     inputs={name:dict(path=str(Path(path).resolve()),sha256=sha256(path)) for name,path in dict(
         dataset=data,start_checkpoint=parent_path,train_prompts=args.train_prompts,
         eval_prompts=args.eval_prompts,prompt_registry=args.prompt_registry,
-        calibration=calibration,flops_profile=profile).items()}
-    manifest=dict(schema='ours4wan21_online_pipeline_v1',config=config.payload(),mode=mode,
+        calibration=calibration,flops_profile=profile,
+        evaluation_reference=reference_dir/'manifest.json',
+        evaluation_complete=reference_dir/'COMPLETE.json').items()}
+    manifest=dict(schema='ours4wan21_online_pipeline_v1',config=config.payload(),mode=mode,iql_profile=iql_profile,
         inputs=inputs,source_hashes=source_hashes(),protocol=PROTOCOL,gpus=gpus,
         paths=dict(dataset=str(data),start_checkpoint=str(parent_path),wan21_root=str(root),
                    wan_checkpoint=str(wan_checkpoint),flops_profile=str(profile),
-                   calibration=str(calibration),weights=str(weights)),
-        source_lock=lock,model_inventory=inventory(wan_checkpoint),pool=pool,evaluation=evaluation,
-        evaluation_score='vbench_custom_input_raw_mean_v1: mean of ten custom-input dimensions',
+                   calibration=str(calibration),weights=str(weights),
+                   evaluation_bundle=str(reference_dir)),
+        source_lock=lock,model_inventory=inventory(wan_checkpoint),pool=pool,evaluation=reference['rows'],
+        evaluation_budgets=reference['skip_budgets'],
+        training_gpu_slots=balanced_training_slots(pool,len(gpus),config),
+        evaluation_score='VideoMetrics PSNR/SSIM/LPIPS only; vbench skipped_by_user',
         optimizer_policy='R1 reset all three optimizers; R2+ inherit selected checkpoint and RNG')
+    if training_reference is not None:
+        manifest['paths']['training_bundle']=str(training_dir)
+        manifest['pool']=training_reference['rows']
+        manifest['training_gpu_slots']={r['sample_id']:gpus.index(r['baseline_gpu_uuid']) for r in training_reference['rows']}
+        for name in ('manifest.json','COMPLETE.json'):
+            path=training_dir/name
+            manifest['inputs']['training_reference_'+name]=dict(path=str(path),sha256=sha256(path))
     if out.exists():
         if read(out/'manifest.json')!=manifest or not verified(out/'inputs'):
             raise ValueError('existing run differs or has incomplete preparation; use a fresh result name')
@@ -129,15 +169,16 @@ def prepare(args):
     inp=out/'inputs';inp.mkdir()
     (inp/'README.md').write_text('Frozen prompt lists and train-only actor state support. No model weights.\n')
     atomic_torch_save(fixed_support(bundle,config),inp/'fixed_states.pt')
-    dump(inp/'pool.json',pool);dump(inp/'vbench20.json',evaluation)
-    seal(inp,['fixed_states.pt','pool.json','vbench20.json'],identity=dict(inputs=inputs,mode=mode))
+    dump(inp/'pool.json',pool);dump(inp/'evaluation20.json',reference['rows'])
+    seal(inp,['fixed_states.pt','pool.json','evaluation20.json'],identity=dict(inputs=inputs,mode=mode))
     dump(out/'STATUS.json',dict(phase='prepared',round=0))
     print(out)
 
 
 def check_run(run):
     m=read(run/'manifest.json')
-    if m['config']!=OnlineConfig().payload() or m['source_hashes']!=source_hashes():
+    run_config(m)
+    if m['source_hashes']!=source_hashes():
         raise ValueError('frozen online configuration or source code changed')
     if inventory(m['paths']['wan_checkpoint'])!=m['model_inventory']:
         raise ValueError('Wan model inventory changed')
@@ -146,20 +187,32 @@ def check_run(run):
     for item in m['inputs'].values():
         if sha256(item['path'])!=item['sha256']:
             raise ValueError('input changed: '+item['path'])
+    reference=load_evaluation_bundle(m['paths']['evaluation_bundle'])
+    if reference['rows']!=m['evaluation'] or reference['skip_budgets']!=m['evaluation_budgets']:
+        raise ValueError('evaluation baseline reference changed')
+    if m['paths'].get('training_bundle'):
+        training=load_training_bundle(m['paths']['training_bundle'])
+        if training['rows']!=m['pool']:raise ValueError('training population changed')
+        if m['training_gpu_slots']!={r['sample_id']:m['gpus'].index(r['baseline_gpu_uuid']) for r in m['pool']}:
+            raise ValueError('training baseline GPU mapping changed')
     return m
 
 
 def base_job(run,m,row):
     return dict(kind='baseline',sample_id=row['sample_id'],prompt=row['prompt'],
-        slot=gpu_slot(row['sample_id'],len(m['gpus'])),
+        slot=m.get('training_gpu_slots',{}).get(row['sample_id'],gpu_slot(row['sample_id'],len(m['gpus']))),
         output=str(run/'artifacts/baselines'/row['sample_id']))
 
 
 def candidate_job(run,m,row,parent,output,*,sample=False):
+    slot=(m['gpus'].index(row['baseline_gpu_uuid']) if 'baseline_gpu_uuid' in row else
+          m.get('training_gpu_slots',{}).get(row['sample_id'],gpu_slot(row['sample_id'],len(m['gpus']))))
     job=dict(kind='collection' if sample else 'evaluation',sample_id=row['sample_id'],
-        prompt=row['prompt'],slot=gpu_slot(row['sample_id'],len(m['gpus'])),
+        prompt=row['prompt'],slot=slot,
         skip_budget=row['skip_budget'],target_speedup=row['target_speedup'],
         checkpoint=checkpoint_identity(parent),output=str(output))
+    if 'baseline_gpu_uuid' in row:
+        job['expected_gpu_uuid']=row['baseline_gpu_uuid']
     if sample:
         job.update(trajectory_id=row['trajectory_id'],sampling_seed=row['sampling_seed'])
     return job
@@ -231,6 +284,33 @@ def paired_quality(run,m,pairs,output):
             raise ValueError('baseline/candidate prompt mismatch')
     output=Path(output)
     if prepare_directory(output,identity):
+        if len(m['gpus'])>1 and len(pairs)>=len(m['gpus']):
+            with ThreadPoolExecutor(max_workers=len(m['gpus'])) as executor:
+                futures=[executor.submit(paired_quality,run,dict(m,gpus=[gpu]),
+                    pairs[i::len(m['gpus'])],output/f'gpu_{i}') for i,gpu in enumerate(m['gpus'])]
+                for future in futures:future.result()
+            metrics=output/'metrics';metrics.mkdir()
+            (metrics/'README.md').write_text('Concatenated original VideoMetrics shard CSVs; per-video scores retain all 81 frames.\n')
+            for name in ('per_frame.csv','per_video.csv'):
+                combined=[];fields=None
+                for i in range(len(m['gpus'])):
+                    with (output/f'gpu_{i}'/'metrics'/name).open() as stream:
+                        reader=csv.DictReader(stream)
+                        if fields is not None and fields!=reader.fieldnames:raise ValueError('quality CSV schema mismatch')
+                        fields=reader.fieldnames;combined.extend(reader)
+                with (metrics/name).open('w',newline='') as stream:
+                    writer=csv.DictWriter(stream,fieldnames=fields);writer.writeheader();writer.writerows(combined)
+            with (metrics/'per_video.csv').open() as stream:rows=list(csv.DictReader(stream))
+            if len(rows)!=len(pairs) or {r['video_id'] for r in rows}!={p[0] for p in pairs}:
+                raise ValueError('parallel quality coverage mismatch')
+            dump(metrics/'summary.json',dict(schema='ours21_parallel_videometrics_v1',
+                videos=len(rows),frames=sum(int(r['frames']) for r in rows),
+                shards=[read(output/f'gpu_{i}'/'metrics/summary.json') for i in range(len(m['gpus']))],
+                mean_metrics={k:sum(float(r[k]) for r in rows)/len(rows) for k in
+                    ('psnr_rgb_db_mean','ssim_rgb_mean','lpips_alex_v0_1_spatial_mean')}))
+            seal(output,['identity.json','metrics/per_frame.csv','metrics/per_video.csv','metrics/summary.json',
+                *[f'gpu_{i}/COMPLETE.json' for i in range(len(m['gpus']))]],identity=identity)
+            return {r['video_id']:r for r in rows}
         for folder in ('reference','candidate'):(output/folder).mkdir()
         for sid,base,cand in pairs:
             stage_link(output/'reference'/f'{sid}.mp4',Path(base)/'video.mp4')
@@ -249,24 +329,6 @@ def paired_quality(run,m,pairs,output):
         return {r['video_id']:r for r in csv.DictReader(f)}
 
 
-def vbench(run,m,rows,output):
-    identity=dict(videos=[dict(id=r['sample_id'],prompt=r['prompt'],sha256=sha256(Path(r['output'])/'video.mp4')) for r in rows],
-                  protocol='vbench_custom_input_raw_mean_v1')
-    output=Path(output)
-    if prepare_directory(output,identity):
-        staging=output/'videos';staging.mkdir()
-        for row in rows:stage_link(staging/f'{row["sample_id"]}.mp4',Path(row['output'])/'video.mp4')
-        dump(output/'prompt_map.json',{r['sample_id']+'.mp4':r['prompt'] for r in rows})
-        invoke(['bash',OFFICIAL/'VbenchEvaluation/run_custom_vbench.sh',staging,
-                output/'scores',output/'prompt_map.json'],output/'command.log',m['gpus'][0])
-        score=read(output/'scores/vbench_custom_aggregate_scores.json')
-        if len(score['raw_dimension_scores'])!=10 or not math.isfinite(score['vbench_score']):
-            raise ValueError('incomplete VBench custom score')
-        files=['identity.json','prompt_map.json',*map(lambda p:str(p.relative_to(output)),(output/'scores').rglob('*.json'))]
-        seal(output,files,identity=identity)
-    return read(output/'scores/vbench_custom_aggregate_scores.json')
-
-
 def collect_round(run,m,parent,r,config):
     import torch
     from .policy import resolve_budget
@@ -274,11 +336,16 @@ def collect_round(run,m,parent,r,config):
     root=run/'rounds'/f'round_{r:03d}';root.mkdir(parents=True,exist_ok=True)
     (root/'README.md').write_text('plan.json fixes sampled prompts, targets and RNG; collection/, replay.pt, training/ and optional evaluation/ follow.\n')
     plan=make_plan(m['pool'],r,len(m['gpus']),
-        lambda t:resolve_budget(target_speedup=t,calibration=m['paths']['calibration']),config)
+        lambda t:resolve_budget(target_speedup=t,calibration=m['paths']['calibration']),config,
+        gpu_slots=m.get('training_gpu_slots'))
     freeze_json(root/'plan.json',dict(round=r,parent=checkpoint_identity(parent),rows=plan))
     jobs=[];pairs=[]
     for row in plan:
-        base=base_job(run,m,row);jobs.append(base)
+        if m['paths'].get('training_bundle'):
+            base=dict(output=str(Path(m['paths']['training_bundle'])/'baselines'/row['sample_id']))
+            if not verified(base['output']):raise ValueError('missing/corrupt offline training baseline')
+        else:
+            base=base_job(run,m,row);jobs.append(base)
         cand=candidate_job(run,m,row,parent,root/'collection'/row['trajectory_id'],sample=True)
         jobs.append(cand);pairs.append((row['trajectory_id'],base['output'],cand['output']))
     dispatch(run,m,jobs,f'collect_r{r:03d}')
@@ -298,7 +365,7 @@ def collect_round(run,m,parent,r,config):
     return replay_dir/'transitions.pt'
 
 
-def aggregate_target(pairs,quality,score):
+def aggregate_target(pairs,quality):
     rows=[]
     for sid,base,cand in pairs:
         b,c=read(Path(base)/'measurement.json'),read(Path(cand)/'measurement.json')
@@ -309,24 +376,30 @@ def aggregate_target(pairs,quality,score):
         generate_speedup=sum(x['baseline']['generate_seconds'] for x in rows)/sum(x['candidate']['generate_seconds'] for x in rows),
         mean_generate_seconds=sum(x['candidate']['generate_seconds'] for x in rows)/len(rows),
         mean_dit_tflops=sum(x['candidate']['dit_tflops'] for x in rows)/len(rows),
-        vbench_score=score['vbench_score'],vbench_dimensions=score['raw_dimension_scores'])
+        vbench_status='skipped_by_user')
 
 
 def evaluate_round(run,m,parent,r,config):
-    from .policy import resolve_budget
     root=run/'rounds'/f'round_{r:03d}'/'evaluation';root.mkdir(parents=True,exist_ok=True)
-    (root/'README.md').write_text('VBench20: 20 remote-selected prompts × five targets; ten custom-input dimensions and paired PSNR/SSIM/LPIPS.\n')
+    (root/'README.md').write_text('Twenty prompts from the frozen VBench50 subset × three targets; reused native baselines, paired PSNR/SSIM/LPIPS and component measurements. VBench scoring disabled.\n')
     frozen=Path(m['paths']['start_checkpoint'])
     identity=dict(checkpoint=checkpoint_identity(parent),reference=checkpoint_identity(frozen),
-                  prompts=m['evaluation'],targets=list(config.evaluation_targets),round=r)
+                  prompts=m['evaluation'],targets=list(config.evaluation_targets),round=r,
+                  baseline_bundle=sha256(Path(m['paths']['evaluation_bundle'])/'manifest.json'),
+                  skip_budgets=m['evaluation_budgets'],vbench_enabled=False)
     freeze_json(root/'identity.json',identity)
     results=[]
-    baselines=[base_job(run,m,row) for row in m['evaluation']]
-    dispatch(run,m,baselines,f'eval_baseline_r{r:03d}')
-    baseline_score=vbench(run,m,baselines,run/'evaluation_reference/baseline_vbench20')
-    for target in config.evaluation_targets:
+    # Reuse the immutable adapter directly: no native generation jobs are dispatched.
+    reference=load_evaluation_bundle(m['paths']['evaluation_bundle'])
+    if reference['rows']!=m['evaluation'] or reference['skip_budgets']!=m['evaluation_budgets']:
+        raise ValueError('evaluation reference changed')
+    baselines=[dict(output=str(Path(m['paths']['evaluation_bundle'])/'baselines'/row['sample_id']))
+               for row in m['evaluation']]
+    # All targets and both checkpoints share one resident worker per GPU.
+    # This avoids repeating native warmup/model loading for six small conditions.
+    cells=[];all_jobs=[]
+    for target,budget in zip(config.evaluation_targets,m['evaluation_budgets']):
         tag=f'target_{target:g}x'
-        budget=resolve_budget(target_speedup=target,calibration=m['paths']['calibration'])
         comparisons={}
         for label,checkpoint,out in (
             ('offline',frozen,run/'evaluation_reference'/tag),('online',parent,root/tag)):
@@ -335,22 +408,27 @@ def evaluate_round(run,m,parent,r,config):
                 row=dict(**prompt,target_speedup=target,skip_budget=budget)
                 job=candidate_job(run,m,row,checkpoint,out/'candidates'/row['sample_id'])
                 jobs.append(job);pairs.append((row['sample_id'],base['output'],job['output']))
-            dispatch(run,m,jobs,f'eval_{label}_{tag}_r{r:03d}')
+            all_jobs.extend(jobs)
+            cells.append((target,budget,label,out,pairs))
+    dispatch(run,m,all_jobs,f'eval_all_targets_r{r:03d}')
+    for target,budget in zip(config.evaluation_targets,m['evaluation_budgets']):
+        comparisons={}
+        for cell_target,_,label,out,pairs in cells:
+            if cell_target != target:continue
             quality=paired_quality(run,m,pairs,out/'quality')
-            score=vbench(run,m,jobs,out/'vbench20')
-            comparisons[label]=aggregate_target(pairs,quality,score)
+            comparisons[label]=aggregate_target(pairs,quality)
         results.append(dict(target_speedup=target,skip_budget=budget,**comparisons,
-            delta_psnr=comparisons['online']['mean_quality']['psnr_rgb_db_mean']-comparisons['offline']['mean_quality']['psnr_rgb_db_mean'],
-            delta_vbench_score=comparisons['online']['vbench_score']-comparisons['offline']['vbench_score']))
-    dump(root/'metrics.json',dict(round=r,prompts=20,candidate_cells=100,reference_cells=100,
-        protocol=PROTOCOL,score_protocol='vbench_custom_input_raw_mean_v1',
-        baseline_vbench_score=baseline_score['vbench_score'],per_target=results))
-    lines=['# VBench20 online comparison', '', 'Ten custom-input VBench dimensions; scores below are raw means.', '',
-        '| Target | Online latency (s) | Online speedup | Online PSNR | Offline PSNR | SSIM | LPIPS | DiT TFLOPs | VBench score |',
-        '|---|---:|---:|---:|---:|---:|---:|---:|---:|']
+            delta_psnr=comparisons['online']['mean_quality']['psnr_rgb_db_mean']-comparisons['offline']['mean_quality']['psnr_rgb_db_mean']))
+    cells=len(m['evaluation'])*len(config.evaluation_targets)
+    dump(root/'metrics.json',dict(round=r,prompts=len(m['evaluation']),candidate_cells=cells,reference_cells=cells,
+        protocol=PROTOCOL,score_protocol='rgb_full_reference_v1',
+        vbench_status='skipped_by_user',reused_baseline_videos=len(baselines),per_target=results))
+    lines=['# Online 20-prompt comparison', '', 'Frozen VBench50 subset, reused native baselines; VBench scoring skipped by user. Targets are nominal; actual speeds are reported.', '',
+        '| Target | Online latency (s) | Online speedup | Online PSNR | Offline PSNR | SSIM | LPIPS | DiT TFLOPs |',
+        '|---|---:|---:|---:|---:|---:|---:|---:|']
     for item in results:
         a,b=item['online'],item['offline'];q=a['mean_quality']
-        lines.append(f"| {item['target_speedup']:g}x | {a['mean_generate_seconds']:.3f} | {a['generate_speedup']:.4f} | {q['psnr_rgb_db_mean']:.4f} | {b['mean_quality']['psnr_rgb_db_mean']:.4f} | {q['ssim_rgb_mean']:.6f} | {q['lpips_alex_v0_1_spatial_mean']:.6f} | {a['mean_dit_tflops']:.3f} | {a['vbench_score']:.6f} |")
+        lines.append(f"| {item['target_speedup']:g}x | {a['mean_generate_seconds']:.3f} | {a['generate_speedup']:.4f} | {q['psnr_rgb_db_mean']:.4f} | {b['mean_quality']['psnr_rgb_db_mean']:.4f} | {q['ssim_rgb_mean']:.6f} | {q['lpips_alex_v0_1_spatial_mean']:.6f} | {a['mean_dit_tflops']:.3f} |")
     (root/'READOUT.md').write_text('\n'.join(lines)+'\n')
     seal(root,['identity.json','metrics.json','READOUT.md'],identity=identity)
 
@@ -360,7 +438,7 @@ def run_pipeline(args):
     with (run/'pipeline.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:raise RuntimeError('another orchestrator already owns this run')
-        m=check_run(run);c=OnlineConfig();parent=Path(m['paths']['start_checkpoint']);online=[]
+        m=check_run(run);c=run_config(m);parent=Path(m['paths']['start_checkpoint']);online=[]
         try:
             for r in range(1,c.rounds+1):
                 dump(run/'STATUS.json',dict(round=r,phase='collection'))
@@ -371,12 +449,12 @@ def run_pipeline(args):
                 selected=read(run/'rounds'/f'round_{r:03d}'/'training/selected.json')
                 if sha256(selected['path'])!=selected['sha256']:raise ValueError('checkpoint corrupted')
                 parent=Path(selected['path'])
-                if r%c.evaluation_every==0:
-                    dump(run/'STATUS.json',dict(round=r,phase='vbench20'))
+                if r in c.evaluation_rounds():
+                    dump(run/'STATUS.json',dict(round=r,phase='evaluation20'))
                     evaluate_round(run,m,parent,r,c)
                 dump(run/'STATUS.json',dict(round=r,phase='round_complete',checkpoint=selected))
-            dump(run/'RESULT.json',dict(status='complete',rounds=c.rounds,
-                final_checkpoint=checkpoint_identity(parent),evaluated_rounds=list(range(c.evaluation_every,c.rounds+1,c.evaluation_every))))
+            dump(run/'RESULT.json',dict(status='complete',rounds=c.rounds,vbench_status='skipped_by_user',
+                final_checkpoint=checkpoint_identity(parent),evaluated_rounds=c.evaluation_rounds()))
             dump(run/'STATUS.json',dict(round=c.rounds,phase='complete'))
         except BaseException as exc:
             dump(run/'LAST_ERROR.json',dict(error=repr(exc),status=read(run/'STATUS.json')))
@@ -387,7 +465,7 @@ def train_worker(args):
     require_environment()
     import torch
     from .online_training import train_round
-    run=under(args.run_dir,EXP_ROOT);m=check_run(run);r=args.round;c=OnlineConfig()
+    run=under(args.run_dir,EXP_ROOT);m=check_run(run);r=args.round;c=run_config(m)
     if not 1<=r<=c.rounds:raise ValueError('invalid round')
     torch.set_num_threads(1)
     parent=Path(m['paths']['start_checkpoint']) if r==1 else Path(read(run/'rounds'/f'round_{r-1:03d}'/'training/selected.json')['path'])
@@ -399,23 +477,34 @@ def train_worker(args):
 def main():
     p=argparse.ArgumentParser(description=__doc__);sub=p.add_subparsers(dest='action',required=True)
     q=sub.add_parser('prepare',help='CPU preflight and freeze remote inputs; does not generate video')
-    for name in ('dataset','start-checkpoint','train-prompts','eval-prompts','prompt-registry',
+    for name in ('dataset','start-checkpoint','train-prompts','eval-prompts','evaluation-bundle','prompt-registry',
                  'calibration','flops-profile','wan21-root','checkpoint-dir','output-dir','weights-dir'):
         q.add_argument('--'+name,type=Path,required=True)
+    q.add_argument('--training-bundle',type=Path,help='reuse native baselines from the exact offline train population')
     q.add_argument('--gpus',default='0,1,2,3',help='stable physical GPU IDs or UUIDs')
+    q.add_argument('--iql-profile',choices=tuple(ONLINE_IQL_PROFILES),default='default',
+                   help='freeze a versioned online IQL parameter profile')
+    q.add_argument('--rounds',type=int,default=OnlineConfig().rounds,
+                   help='freeze the requested total rounds; also evaluate the final round')
     q=sub.add_parser('run',help='start or resume the frozen pipeline');q.add_argument('--run-dir',type=Path,required=True)
     q=sub.add_parser('worker');q.add_argument('--run-dir',type=Path,required=True);q.add_argument('--jobs',type=Path,required=True)
     q=sub.add_parser('train-round');q.add_argument('--run-dir',type=Path,required=True);q.add_argument('--round',type=int,required=True)
-    q=sub.add_parser('build-pool',help='exclude offline held-out and VBench20 prompts from a full registry')
+    q=sub.add_parser('build-pool',help='exclude offline held-out and evaluation20 prompts from a full registry')
     for name in ('dataset','prompt-registry','eval-prompts','output-dir'):
         q.add_argument('--'+name,type=Path,required=True)
     q=sub.add_parser('build-calibration',help='export measured fixed-K runs from generate.py')
     q.add_argument('--baseline-dir',type=Path,required=True)
     q.add_argument('--candidate-dirs',type=Path,nargs='+',required=True)
     q.add_argument('--output-dir',type=Path,required=True)
+    q=sub.add_parser('build-evaluation',help='freeze 20 VBench50 prompts and reuse native baselines; no generation')
+    q.add_argument('--source-run',type=Path,required=True)
+    q.add_argument('--output-dir',type=Path,required=True)
     sub.add_parser('show-config')
     args=p.parse_args()
     if args.action=='show-config':print(json.dumps(OnlineConfig().payload(),indent=2))
+    elif args.action=='build-evaluation':
+        from .online_reference import build_evaluation
+        build_evaluation(args)
     elif args.action in ('build-pool','build-calibration'):
         from .online_setup import build_pool,build_calibration
         (build_pool if args.action=='build-pool' else build_calibration)(args)

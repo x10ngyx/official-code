@@ -145,8 +145,8 @@ class OverheadWorkflowTests(unittest.TestCase):
             rows=[dict(trajectory_id=f't{i}',sample_id=f'p{i}',split='train',shard_index=0,
                 policy_family='random_continuous_seacache_threshold',protocol={}) for i in range(9)]
             for row in rows[:3]:
-                path=root/'shards/shard_00/candidates'/row['trajectory_id']/'CANDIDATE_COMPLETE.json'
-                path.parent.mkdir(parents=True)
+                path=root/'completed'/f"{row['trajectory_id']}.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(dict(schema='ours4wan21_candidate_complete_v3',trajectory_row=row)))
             available,paths=completed_rows(root,rows)
             self.assertEqual(available,rows[:3])
@@ -156,6 +156,18 @@ class OverheadWorkflowTests(unittest.TestCase):
             paths['t0'].write_text('{}')
             with self.assertRaises(ValueError):
                 completed_rows(root,rows)
+
+    def test_legacy_completion_layout_remains_readable(self):
+        with tempfile.TemporaryDirectory(dir=contracts.EXP_ROOT) as directory:
+            root=Path(directory)
+            row=dict(trajectory_id='t0',sample_id='p0',split='train',shard_index=0,
+                policy_family='random_continuous_seacache_threshold',protocol={})
+            path=root/'shards/shard_00/candidates/t0/CANDIDATE_COMPLETE.json'
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(dict(schema='ours4wan21_candidate_complete_v3',trajectory_row=row)))
+            available,paths=completed_rows(root,[row])
+            self.assertEqual(available,[row])
+            self.assertEqual(paths['t0'],path)
 
     def test_native_val_test_split_is_preserved(self):
         decisions=trajectory(ScriptPolicy(),25).decisions

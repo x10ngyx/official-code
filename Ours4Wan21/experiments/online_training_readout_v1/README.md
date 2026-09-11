@@ -1,0 +1,5 @@
+# Online training readout
+
+`plot.py` reads sealed R1–R4 `training/epoch_metrics.json`, `selection.json` and `metrics.json`, verifies hashes and epoch counts, and exports a standalone six-panel PNG/SVG to the existing online run's `analysis/training_readout_r1_r4/`. Full metrics and selection candidate CSVs retain all recorded diagnostics.
+
+Chart contract: technical training diagnostics for four completed rounds; 5 critic warmup + 20 joint epochs per round. Ordered x-axis is local training epoch within each round, displayed in four separate blocks; do not connect the last epoch of one round to the next because continuation uses the selected checkpoint. Three loss panels, mean advantage, mean actor weight, and selection actor agreement. Warmup actor-related zero placeholders are omitted; no validation loss exists. Linear y-axes are independent and labeled; round identity uses blue/orange/olive/pink with direct round labels, selected checkpoints use stars, warmup uses pale neutral shading. No smoothing or new inference. Export PNG/SVG with readable fonts; inspect the actual PNG before handoff.

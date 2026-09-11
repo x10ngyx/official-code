@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .contracts import MODEL_ROOT, TrainingConfig, create_result, dump, sha256, under
+from .contracts import MODEL_ROOT, TrainingConfig, training_config, create_result, dump, sha256, under
 from .local_iql import IQLModelConfig, PolicyNet, QNet, apply_normalizer
 from .train import validate_bundle
 
@@ -99,8 +99,10 @@ def main():
     config = json.loads((training/'config.json').read_text())
     if completion.get('status') != 'complete' or completion.get('smoke_only') or completion['epochs'] != 400:
         raise ValueError('post300 selection requires complete production 400-epoch training')
-    if any(config[k] != v for k,v in asdict(TrainingConfig()).items()):
-        raise ValueError('training configuration differs from local frozen settings')
+    profile = config.get('iql_profile', 'baseline')
+    expected = asdict(training_config(profile, seed=config.get('seed')))
+    if any(config[k] != v for k,v in expected.items()):
+        raise ValueError('training configuration differs from its explicit IQL profile')
     if (training/'model_weights').resolve() != weights.resolve():
         raise ValueError('checkpoint directory does not belong to training result')
     data_file = a.dataset/'transitions.pt'
@@ -140,6 +142,8 @@ def main():
         checkpoint=torch.load(paths[e],map_location='cpu',weights_only=False)
         if checkpoint['epoch'] != e or checkpoint['state'] != config['state'] or checkpoint['smoke_only']:
             raise ValueError('checkpoint contract mismatch')
+        if checkpoint['train_config'] != expected or checkpoint.get('iql_profile','baseline') != profile:
+            raise ValueError('checkpoint IQL profile differs from training config')
         if not all(torch.equal(first['normalizer'][k],checkpoint['normalizer'][k]) for k in ('mean','std')):
             raise ValueError('normalizer changed across epochs')
         for key,net in nets.items():
