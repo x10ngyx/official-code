@@ -1,0 +1,346 @@
+{
+  "base_commit": "fdb1977f7e45b5703de461f23c24990821de9e19",
+  "scope": "Non-model/non-environment dependencies; inventory only, not vendored resources.",
+  "repository_files": {
+    "ComponentMetrics/calflops_loader.py": {
+      "sha256": "67dd729d23c32b4ce7958b18947d91444a0cbf88e023c65158100d262390a451",
+      "bytes": 4612,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "ComponentMetrics/component_flops.py": {
+      "sha256": "859dc818a922fe61c23d82571d8329cbaa338e41ef1adf5d7a33ac237753a067",
+      "bytes": 7464,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "ComponentMetrics/component_timing.py": {
+      "sha256": "24b4953c2d5c1059ab29be9f0796401ad4ab93eb24aa8606ab3f7297a5f724fe",
+      "bytes": 4549,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "ComponentMetrics/fixed_protocol.py": {
+      "sha256": "07fa28061fe4acc58ab71b2c3eb8211bae3e5741374ad1249eb94f470504872b",
+      "bytes": 971,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "ComponentMetrics/reporting.py": {
+      "sha256": "d98110b8a2b6c03f331a490c295d53a40ce200d583203b9eac62c6789231ea65",
+      "bytes": 3129,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "DiCache4Wan21/upstream_lock.json": {
+      "sha256": "64a09d1bdbc76f58e556e29cc8c925a001738f61766d6b9280162c5c49cce148",
+      "bytes": 3074,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/data_collection/configs/seacache_thresholds.wan22_v1.json": {
+      "sha256": "88e2d8f4e8ab81b5ff1b408e65ea119fc2490677ece41ed685ca5ea430d074f5",
+      "bytes": 882,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/data_collection/resources/prompts/openvidhd_balanced_5000.upstream.jsonl": {
+      "sha256": "fb5d5d73f86b84d10d8e55154b789ac8549c74e90f33c1d4d2a02d67a5cde3e5",
+      "bytes": 5950735,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/data_collection/src/ours4wan21_data/manifest.py": {
+      "sha256": "98cca26cfee9701c36b18e8c82fcbc063c6b65e62e082322012efe42c5f28845",
+      "bytes": 48244,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/experiments/cnn_mixed3500_v1/features.py": {
+      "sha256": "8ed731faf70ce3cb2ae874eb9a8ffe34eba28ff75bae007c523a2b869c1d3f2b",
+      "bytes": 2507,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/experiments/cnn_mixed3500_v1/model.py": {
+      "sha256": "4e749a4f7f0b2f796f2dabef55c80ee4e4f1288c4f99f187319f6b3bb6a168f2",
+      "bytes": 2419,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/__init__.py": {
+      "sha256": "2693a7ef6d47c43e23b89c146c62a9335a23ae51c0982bb141ed413b8d133c98",
+      "bytes": 204,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/analysis.py": {
+      "sha256": "de63648756648ab303334705e1fec415668601c0fd1af531f529cad2151dd327",
+      "bytes": 11613,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/bloc_features.py": {
+      "sha256": "205c660589d0ee2bf33504e7f27b70048845a512f14e93af09db58dff2c901fc",
+      "bytes": 5176,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/contracts.py": {
+      "sha256": "e324825928ce1321a56d38c99ec8020e88b47a43e0272d3fc273fbd15a074a7c",
+      "bytes": 7492,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/data.py": {
+      "sha256": "f18080d53ce3a84f135d19689abb07a562513d190597e8a2914f9ef69d0d0133",
+      "bytes": 11575,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/evaluation.py": {
+      "sha256": "400dada0c946342024a2a7a1fb6dfc5052b6fabdbeb17fb92ed6763f08bc251e",
+      "bytes": 3332,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/feature_cache.py": {
+      "sha256": "7f0af47b577b0b3619d4d2feb542f0d96607fe03a90937ffcacc39755dbf88a5",
+      "bytes": 10538,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/inference.py": {
+      "sha256": "73a6bbe3fd95512920cd2df6730dfedb08637d833124e6bcc73cb0efef843851",
+      "bytes": 13012,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/latent_features.py": {
+      "sha256": "e5bc908efb6814bf66709baf6487b88d25bb6f7c05d9112929a9a09fbc37c6df",
+      "bytes": 11162,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/local_iql.py": {
+      "sha256": "1e976c867322866aece0e31390a12f810ad86d5e7170e613afb004ac6281769d",
+      "bytes": 15112,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/online_common.py": {
+      "sha256": "87291be075c5996e4a4c9a85a7cd21f7c20590922f4a79b6d8c2d6c2c737c874",
+      "bytes": 9741,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/online_generation.py": {
+      "sha256": "9f97be13d2fc21940f3f2ce7b91a449bd2c1a15691c68345c30c0396a7e344e5",
+      "bytes": 6883,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/online_pipeline.py": {
+      "sha256": "ff4d51f086a9d7200f025916a4a3fc99140fb52b5210f956fc34f86b1f152f6e",
+      "bytes": 31563,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/online_reference.py": {
+      "sha256": "c2959a076ced5503eae4c463fabf786e373f0be51bf171f826f0b670ffd99622",
+      "bytes": 10204,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/online_setup.py": {
+      "sha256": "bd6a5e271212c7c996348ac03d0ca9c37d477d8cec4e06066d7d781a8f21f445",
+      "bytes": 4960,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/online_train_reference.py": {
+      "sha256": "5137fa1280fe0fbf0c6860e7165080da8c41915d0d82d333203bce61a7924a46",
+      "bytes": 7145,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/online_training.py": {
+      "sha256": "c12c6123a477a48dc25732108278a40f148fc693a6eabb59916096eddf8295da",
+      "bytes": 18297,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/overhead.py": {
+      "sha256": "b82772eb7074e4c2adbf580161d8646f200e55a5fb5b85750a241a6ec21df704",
+      "bytes": 6614,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/policy.py": {
+      "sha256": "5572e66ffc7ae74488dad12b5047bcad2acd0f6e8458bdd53f789b306af87f42",
+      "bytes": 6915,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/runtime.py": {
+      "sha256": "3a2a9529ac13541a1ca233bfd634ca84fd2021ff461f2ab26f928e821ba62cae",
+      "bytes": 11131,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/selection.py": {
+      "sha256": "2d62d0a7177ff1d5e46fc39d19327cc061d7d1d99192a781e69d865a9ae09d2d",
+      "bytes": 8169,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/shared.py": {
+      "sha256": "d84980500c94ae68f812d3b54f6dc00a910ebff3b3b192eace715174d4691817",
+      "bytes": 441,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Ours4Wan21/ours4wan21/train.py": {
+      "sha256": "441d6e2478874a9208fc00f82eced87eade13c58502cda538506a5940d481dfb",
+      "bytes": 13915,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "SeaCache4Wan21/generate.py": {
+      "sha256": "88505d7132ef4f1288db16a403c8cc34fc2c4aeae996a51be7398ab6089ded85",
+      "bytes": 5245,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "SeaCache4Wan21/inference_timing.py": {
+      "sha256": "fb4779b8d159371cafec24144e924f09546152a24543d68b24a43a231a552a0e",
+      "bytes": 9904,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "SeaCache4Wan21/seacache.py": {
+      "sha256": "4739369e11401d9ed0e718d9fa84d419f987a5ed7701d7897f481382e0e5b17a",
+      "bytes": 14014,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "SeaCache4Wan21/validate_reproduction.py": {
+      "sha256": "8e62dd40650b0f9e83ad835ea13cbe2bcbc9b3c75b25de44aceff915754eca5d",
+      "bytes": 3950,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "SeaCache4Wan21/wan21_integration.py": {
+      "sha256": "09595fb62a6680d5153344a5f7d27ff3e50aa23734b35ffd017892a2aa498a91",
+      "bytes": 10963,
+      "tracked_at_base": true,
+      "matches_base": false
+    },
+    "Vbench200/VBench200_full_info.json": {
+      "sha256": "418b57d9d73054b02fefa5b58eee068fe316b33f1b3700b75a0e6522f5b588af",
+      "bytes": 40021,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VbenchEvaluation/aggregate_custom_vbench_scores.py": {
+      "sha256": "639d7bc52f99e336d9a0e4946e5e2adfa261f7ba8ea57952b341141d91025cda",
+      "bytes": 2546,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VbenchEvaluation/evaluate_custom_vbench.py": {
+      "sha256": "f8e15fb755f6eba8046d794b589088c5c5f500d12d5994675a6faae460819008",
+      "bytes": 4937,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VbenchEvaluation/run_custom_vbench.sh": {
+      "sha256": "ede2e5cc85c07f7406eb74fd6fb79f050eae6906c7e00e4a22bc2334570224a0",
+      "bytes": 1216,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VideoMetrics/video_metrics/__init__.py": {
+      "sha256": "b4cee4e7be71890af3ff279c9b1b964b080e7dca8b50d69512fcc693e0d9e169",
+      "bytes": 540,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VideoMetrics/video_metrics/cli.py": {
+      "sha256": "62cc7530eb214297111029fc63a062a2353c6209312118f1d923962ce496e235",
+      "bytes": 3667,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VideoMetrics/video_metrics/compat.py": {
+      "sha256": "2c493c3d42b255b2994a355db08e3e0d3440187b364daec8db692068c48e1d28",
+      "bytes": 2230,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VideoMetrics/video_metrics/core.py": {
+      "sha256": "e47f354b96f7f3ee1f7ff609b835bf3fb8b74ede2fb2ebe6dc1cdfc1153ccdc7",
+      "bytes": 6330,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VideoMetrics/video_metrics/evaluator.py": {
+      "sha256": "c75b1de68188ad801c6ffba6e3e9d0b6b72dc67076153b94a471a01339efb20e",
+      "bytes": 10970,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "VideoMetrics/video_metrics/video.py": {
+      "sha256": "025959caeeda8894ecf757b8187e32958ddaaa19529d1dd234698bd4e7c0cfda",
+      "bytes": 2116,
+      "tracked_at_base": true,
+      "matches_base": true
+    },
+    "Wan21Benchmark/protocol.py": {
+      "sha256": "92812266cea57dc49d1c84ea05db03d4c46efe824c7d3fd13f943b781a8190f4",
+      "bytes": 1862,
+      "tracked_at_base": true,
+      "matches_base": false
+    }
+  },
+  "external_wan_root": "/home/wangyue/work/Wan2.1",
+  "external_wan_sources_sha256": {
+    "/home/wangyue/work/Wan2.1/generate.py": "f4aae5a3edafa9522ccbbc19d200928035f0a594d125b8a113c04f031eeeeeb0",
+    "/home/wangyue/work/Wan2.1/gradio/i2v_14B_singleGPU.py": "cfc9aed5c07d71e192af27ede60b942cdbf623e90e10abad7902a0a030b82007",
+    "/home/wangyue/work/Wan2.1/gradio/t2i_14B_singleGPU.py": "606beef52a686cf8ce22c1ac11965fa5d20e91a3651e9cd865132a1fd48f2144",
+    "/home/wangyue/work/Wan2.1/gradio/t2v_1.3B_singleGPU.py": "4ccfcab3c50cd83d982318299bcf8eb619ac3f87a9dc3f2ec93646db279b72b9",
+    "/home/wangyue/work/Wan2.1/gradio/t2v_14B_singleGPU.py": "443bce87664b0e48d1de3fdf132ea0cb73406838ae122895dbb9b3a76e4492b8",
+    "/home/wangyue/work/Wan2.1/wan/__init__.py": "d9390f993a448bd679ac8d5254620ca6b5d2bc450f65bbf5f4a64c82cb4f4a99",
+    "/home/wangyue/work/Wan2.1/wan/configs/__init__.py": "7d26f97690511cb5be25506cb921641fecd509f5b296e30fc9095b4f985d3701",
+    "/home/wangyue/work/Wan2.1/wan/configs/shared_config.py": "a942b6f0a1d1a4ec9a7893c17a6218651ce272953b90d012ce5cdd19d15e45f7",
+    "/home/wangyue/work/Wan2.1/wan/configs/wan_i2v_14B.py": "9631cf7239f6a322c5a6a514efda68d35672655738049fff71bab3ef9b36e71f",
+    "/home/wangyue/work/Wan2.1/wan/configs/wan_t2v_14B.py": "99aadb67eec94e28c2a02db45c178c07f7488b7e1b3c148aae1e23e908fe580f",
+    "/home/wangyue/work/Wan2.1/wan/configs/wan_t2v_1_3B.py": "6976ec4c03f737b69ae17afe13339b32905739205d4c19f16c8b329f9f06e986",
+    "/home/wangyue/work/Wan2.1/wan/distributed/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/wangyue/work/Wan2.1/wan/distributed/fsdp.py": "eeeffdc9ac3baf45d505b2b8e289dd9f59a188838355b86225fa8180b243fd12",
+    "/home/wangyue/work/Wan2.1/wan/distributed/xdit_context_parallel.py": "8f4b97bb99523a69588d753822e0a951983f1fdfa33ea7ba527c56f71e19915c",
+    "/home/wangyue/work/Wan2.1/wan/image2video.py": "724fcb9f886425ae8741e7177d0df5efe91227c1e5fc78303c47dbceff2c13f6",
+    "/home/wangyue/work/Wan2.1/wan/modules/__init__.py": "6cba8c084de01455a914a3b5620e0a286d4dee2c39143b6508bb8fac87e71b4b",
+    "/home/wangyue/work/Wan2.1/wan/modules/attention.py": "23fe7c6f6e4065242d95e5e188cb2d1a16bd283f05dca7e7e878977158fcfdbc",
+    "/home/wangyue/work/Wan2.1/wan/modules/clip.py": "70a589a3a77d777352fbce633838b490a6ffc7968ec8beb927e5d7a5a585eb89",
+    "/home/wangyue/work/Wan2.1/wan/modules/model.py": "06f4b785b3b62b0b115ec01aba5580b1f116a6bb3e3c2cd8b3e160f3b0df09a0",
+    "/home/wangyue/work/Wan2.1/wan/modules/t5.py": "8b0cebf3192c542f92a344255a06c203df3ba24160715899a055cc8de0cd930f",
+    "/home/wangyue/work/Wan2.1/wan/modules/tokenizers.py": "cf5b189c1ae017326efadab2fc6380ba223fa7a59d0be6464bd264db53c76934",
+    "/home/wangyue/work/Wan2.1/wan/modules/vae.py": "4912ffd7a9fbb17ceef9a17d4a9c4b8aee36ec37c32594f54e57693b29909498",
+    "/home/wangyue/work/Wan2.1/wan/modules/xlm_roberta.py": "7e27d93573b5fb0fef1c9db9205264453bd30dcb1404c38031f24ed9c84b8d4a",
+    "/home/wangyue/work/Wan2.1/wan/text2video.py": "ca344c0f24d3d305dd93a0433dc88a212e5d815bb8a784f8f54fc9fa98ff06c1",
+    "/home/wangyue/work/Wan2.1/wan/utils/__init__.py": "4a8d71cd9feefa65d51770ee8351a07cd6ebe82f9b75fef1ddaf0f30b4db502c",
+    "/home/wangyue/work/Wan2.1/wan/utils/fm_solvers.py": "ca6e84a2ebb169dcf7dd45ce74e399d123203e5bd8ecb80d847115fe13878c44",
+    "/home/wangyue/work/Wan2.1/wan/utils/fm_solvers_unipc.py": "d885dbe7897502b3eec515ee79ee0dc2251977c04a2787ea6c18824204cced12",
+    "/home/wangyue/work/Wan2.1/wan/utils/prompt_extend.py": "22c52f66c0276b4da3e44fc844f7327a28139962eeff7f943ffef7b4560d6501",
+    "/home/wangyue/work/Wan2.1/wan/utils/qwen_vl_utils.py": "be11ac9808a6d79bb4e99482ea7ae9b2eccd48c2b517845b55f71cf5bb768239",
+    "/home/wangyue/work/Wan2.1/wan/utils/utils.py": "8e2d85b1c7961233379b9ab38cee153ca8d95358f27cb8bb6dd154e809731c8c"
+  },
+  "external_profile": {
+    "path": "/all/yiran06-disk1/wangyue_home/exp/cacheimpact_wan21_compact1000_seed42_v1/component_profile.json",
+    "sha256": "48464be5c43b33cddc20a4d0ca4a9982d36bceba6f6662ea7f9bf616201aab6b"
+  },
+  "baseline_root": "/all/yiran06-disk1/wangyue_home/exp/cacheimpact_wan21_compact1000_seed42_v1",
+  "baseline_reuse_optional": true,
+  "model_weights_and_environments_excluded": true
+}
